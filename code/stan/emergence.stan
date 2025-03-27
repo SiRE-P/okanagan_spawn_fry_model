@@ -22,8 +22,7 @@ data {
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[Y] ATU; //ATUs on day 100
   int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
-  int testalinden[Y]; //index for whether or not testalinden dam failure would affect survival
-  
+
   int N_missing_spawners;
   array[N_missing_spawners]  int spawners_missidx;
   vector[Y] spawners;
@@ -46,7 +45,6 @@ parameters {
   vector[Y] total_fry_ln;
   
   real a_FWMT;
-  real a_testalinden;
   real sf_ATU;
   
   real<lower=0> soak_b;
@@ -100,7 +98,6 @@ transformed parameters{
   for (y in 1:Y) {
     alpha_sf[y] = exp(alpha0
                       + a_FWMT * exceeded_FWMT[y]
-                      + a_testalinden * testalinden[y]
                       + sf_ATU * ATU[y]);
   }
   
@@ -123,7 +120,6 @@ model {
   eq_ratio ~ lognormal(eq_ratio_prior, eq_ratio_sigma_prior);
   
   a_FWMT ~ normal(0, 0.5);
-  a_testalinden ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
 
   spawners_merge ~ lognormal(log_spawners_mean, log_spawners_sd);
