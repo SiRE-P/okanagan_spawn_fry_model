@@ -1,0 +1,440 @@
+---
+title: "Factors influencing spawner to fry productivity in Okanagan sockeye"
+author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca], Karilyn Alex$^2$, Athena Ogden$^3$, Howard Stiff$^3$, others...\n|\n|
+  $^1$Pacific Science Enterprise Centre, Fisheries and Oceans Canada, West Vancouver, B.C., Canada\n|
+  $^2$Okanagan Nation Alliance, Westbank, B.C., Canada\n|
+  $^3$Pacific Biological Station, Fisheries and Oceans Canada, Nanaimo, B.C., Canada\n"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+    bookdown::pdf_document2:
+      toc: false
+      number_sections: false
+      fig_caption: true
+      keep_tex: false
+csl: ../../../citation_resources/canadian-journal-of-fisheries-and-aquatic-sciences.csl
+bibliography: ../../../citation_resources/plt_library.bib
+always_allow_html: true
+link-citations: yes
+header-includes:
+  - \usepackage[left]{lineno}
+  - \linenumbers
+  - \usepackage{setspace}
+  - \doublespacing
+  - \usepackage{mathptmx}
+  - \newcommand{\beginsupplement}{
+    \setcounter{equation}{0}
+    \renewcommand{\theequation}{S.\arabic{equation}}
+    \setcounter{table}{0}  
+    \renewcommand{\thetable}{S\arabic{table}} 
+    \setcounter{figure}{0} 
+    \renewcommand{\thefigure}{S\arabic{figure}}}
+---
+
+```{r libraries, include = FALSE, warning=FALSE}
+# devtools::install_github("cboettig/knitcitations@v1")
+library(knitcitations); cleanbib()
+cite_options(citation_format = "pandoc", check.entries=FALSE)
+library(bibtex)
+library(knitr)
+library(kableExtra)
+
+library(tidyverse)
+library(janitor)
+library(lunar)
+library(patchwork)
+library(ggrepel)
+
+library(rstan)
+library(tidybayes)
+
+theme_set(theme_bw())
+
+stand <- function(x){
+  (x - mean(x, na.rm = TRUE))/sd(x, na.rm = TRUE)
+}
+```
+
+```{r load_emergence, include = FALSE, warning=FALSE}
+emergence <- read.csv("../../../okanagan_data/2025-03-11 Draft/fry_emergence.csv")
+emergence$yday <- yday(emergence$date)
+
+emergence$time_set_numeric <- with(emergence, {
+  hours <- as.numeric(substr(time_set, 1, 2))
+  minutes <- as.numeric(substr(time_set, 4, 5)) / 60
+  adjusted_hours <- ifelse(hours < 10, hours + 24, hours)  # Add 24 if after midnight
+  (adjusted_hours + minutes) - 20
+})
+
+emergence <- emergence %>% mutate(volume_m3 = ifelse(volume_m3<0, NA, volume_m3),
+                                  mean_nightly_discharge_cms = ifelse(mean_nightly_discharge_cms>100, NA, mean_nightly_discharge_cms)) %>% 
+  mutate(total_catch = as.integer(total_catch))
+
+new_moons <- data.frame()
+for(i in 1:length(unique(emergence$sample_year))){
+  year <- unique(emergence$sample_year)[i]
+  start_date <- as.Date(paste(year,"-04-06", sep = ""))
+  dates <- seq(start_date, start_date+29, by = "day")
+  new_moons <- bind_rows(new_moons, data.frame(year = year, new_moon_date = dates[which.min(lunar.illumination(dates))], new_moon_yday = yday(dates[which.min(lunar.illumination(dates))])))
+}
+
+emergence <- emergence %>% left_join(new_moons %>% rename(sample_year = year))
+
+emergence_select <- emergence %>% select(brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric) %>% 
+  filter(time_set_numeric > 0) %>% 
+  filter(!is.na(total_catch))
+```
+
+```{r thermal_units, include = FALSE, warning=FALSE}
+temperature <- read.csv("../../../okanagan_data/2025-03-11 Draft/river_temperature.csv")
+#tabyl(temperature, location)
+temperature$date <- as.Date(temperature$date)
+
+temperature2 <- read.csv("../../ok_watertemp/data/oliver_air_water_temp_data.csv")
+temperature2$date <- as.Date(temperature2$date)
+
+temperature <- temperature %>% 
+  select(date, temp = water_temperature_c, location) %>% 
+  bind_rows(temperature2 %>% select(date, temp = mean_water_temp) %>% mutate(location = "Oliver2"))
+
+# ggplot(temperature, aes(x = yday(date), y = temp))+
+#   geom_line(aes(color = location))+
+#   facet_wrap(~year(date))
+
+temp_means <- temperature %>% 
+  filter(!(location == "Okanagan River near Oliver, BC" & date >= as.Date("2007-06-01") & date <= as.Date("2008-05-30"))) %>% 
+  group_by(date) %>% 
+  summarise(temperature = mean(temp,na.rm = TRUE))
+
+ggplot(temp_means, aes(x = yday(date), y = temperature))+
+  geom_vline(xintercept = c(100, 319))+
+  geom_line()+
+  facet_wrap(~year(date))
+
+ATU.df <- temp_means %>% 
+  mutate(year_start = if_else(format(date, "%m-%d") >= "11-15",
+                              year(date),
+                              year(date) - 1)) %>% 
+  group_by(year_start) %>% 
+  arrange(date, .by_group = TRUE) %>% 
+  mutate(ATU = cumsum(temperature)) %>% 
+  ungroup()
+
+ggplot(ATU.df, aes(x = yday(date), y = ATU, color = factor(year_start)))+
+  geom_path()
+
+ATU_day100 <- ATU.df %>% 
+  mutate(yday = yday(date)) %>% 
+  mutate(year = year(date)) %>%
+  filter(yday == 100)
+
+ATU_day700 <- ATU.df %>% 
+  mutate(yday = yday(date)) %>% 
+  mutate(year = year(date)) %>%
+  filter(ATU<700, ATU>650) %>% 
+  group_by(year) %>% 
+  filter(ATU == max(ATU))
+
+env.df <- new_moons %>% 
+  left_join(ATU_day100 %>% select(year, ATU))
+
+ggplot(env.df, aes(x = new_moon_yday, y = ATU))+
+  geom_point()+
+  geom_text_repel(aes(label = year))
+
+summary(lm(ATU ~ new_moon_yday, data = env.df))
+```
+
+```{r flow, include=FALSE}
+flow <- read.csv("../../../okanagan_data/2025-03-11 Draft/daily_mean_flow.csv") %>% 
+  mutate(date = as.Date(date), yday = yday(date), year = year(date)) %>% 
+  mutate(month_day = format(date, "%m-%d")) %>% 
+  group_by(month_day) %>% 
+  mutate(life_stage = first(life_stage)) %>% 
+  mutate(life_stage2 = ifelse(month_day > "10-31" | month_day < "04-01", "incubation", life_stage)) %>% 
+  mutate(life_stage = factor(life_stage, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
+  mutate(life_stage2 = factor(life_stage2, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
+  ungroup()
+
+flow %>% 
+  filter(life_stage2 %in% c("incubation", "fry migration")) %>% 
+  ggplot(aes(x = date, y = value))+
+  geom_hline(yintercept = c(5, 28.3), lty = 2)+
+  geom_point(size = 0.1)+
+  facet_wrap(~life_stage)+
+  ylab("flow rate m3/s")+
+  xlab("")+
+  scale_color_discrete(guide = "none")+
+  scale_y_log10()
+
+scour_des <- flow %>% 
+  filter(life_stage2 %in% c("incubation", "fry migration")) %>% 
+  group_by(date) %>% 
+  mutate(scour = max(c(value - 28.5, 0)), desiccation = max(c(5 - value, 0))) %>% 
+  ungroup()
+
+scour_des_sum <- scour_des %>% 
+  group_by(brood_year, life_stage2) %>% 
+  summarise(non_range_days = sum(scour > 0) + sum(desiccation>0),
+            total_scour = sum(scour), 
+            total_desiccation = sum(desiccation), 
+            flow_mean = mean(value), 
+            flow_max = max(value), 
+            flow_min = min(value), 
+            flow_median = median(value), n = n()) %>% 
+  group_by(life_stage2) %>% 
+  mutate(max_n = max(n)) %>% 
+  filter(n > max_n-2) %>% 
+  select(-n, -max_n) %>% 
+  ungroup() %>% 
+  mutate(year = brood_year + 1)
+
+env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubation") %>% select(year, non_range_days, total_scour, total_desiccation))
+```
+
+```{r spawners, include = FALSE}
+#load CNAT spawners
+spawners <- readxl::read_excel("../../../data/Okanagan/!CNAT 2020/CNAT_Escapement Units_2020.xlsx", sheet = "Escapement Units") %>% 
+  janitor::clean_names()
+spawners <- select(spawners, brood_year = year, spawners = au_criver) %>% 
+  filter(!is.na(brood_year)) %>% 
+  mutate(fry_year = brood_year + 1) %>% 
+  arrange(brood_year)
+
+env.df <- env.df %>% 
+  left_join(spawners, by = c("year" = "fry_year")) %>% 
+  mutate(brood_year = year-1)
+```
+
+```{r stan, include = FALSE}
+dayV <- seq(min(emergence_select$yday)-3, max(emergence_select$yday)+5)
+
+
+dat_list <- list(Y = length(unique(emergence_select$sample_year)),
+                 N = nrow(emergence_select),
+                 D = length(dayV),
+                 year = as.numeric(factor(emergence_select$sample_year)),
+                 fry_obs = emergence_select$total_catch,
+                 soak_time = stand(emergence_select$soak_time_min),
+                 day = emergence_select$yday - min(emergence_select$yday) + 1,
+                 hour = stand(emergence_select$time_set_numeric),
+                 new_moon_date = stand(env.df$new_moon_yday),
+                 ATU = stand(env.df$ATU),
+                 exceeded_FWMT = as.numeric(env.df$non_range_days>0),
+                 testalinden = ifelse(env.df$year == 2011, 1, 0),
+                 day_std = (dayV - mean(emergence_select$yday))/sd(emergence_select$yday),
+                 N_missing_spawners = sum(is.na(env.df$spawners)),
+                 spawners_missidx = which(is.na(env.df$spawners)),
+                 spawners = ifelse(is.na(env.df$spawners), -999, env.df$spawners),
+                 
+                 
+                 log_spawners_mean = mean(log(env.df$spawners), na.rm= TRUE),
+                 log_spawners_sd = sd(log(env.df$spawners), na.rm= TRUE),
+                 
+                 sigma_sf_prior = 4,
+                 beta_sf_prior = log(2.5),
+                 eq_ratio_prior = log(0.03),
+                 beta_sf_sigma_prior = 0.7,
+                 eq_ratio_sigma_prior = 0.2
+)
+
+init_year <- min(emergence_select$sample_year) - 1
+
+stan_file <- "../code/stan/emergence.stan"
+fit_file <- "../model_fits/emerge_m.RData"
+hash_file <- "../model_fits/emerge_m.md5"
+
+# Compute current hash
+current_hash <- unname(tools::md5sum(stan_file))
+
+# Check conditions and fit model if needed
+if(!file.exists(fit_file) || !file.exists(hash_file) || 
+   readLines(hash_file) != current_hash) {
+  
+  message("Compiling and fitting Stan model...")
+  emerge_m <- stan_model(file = stan_file)
+  fit <- sampling(emerge_m, data = dat_list, chains = 4, cores = 4)
+  
+  save(fit, emerge_m, file = fit_file)
+  writeLines(current_hash, hash_file)
+  
+} else {
+  message("Loading previously saved fit...")
+  load(fit_file)
+}
+
+worst_Rhat <- summary(fit)$summary %>% 
+  as.data.frame() %>% 
+  mutate(Rhat = round(Rhat, 3)) %>% 
+  arrange(desc(Rhat))
+
+worst_Rhat %>% 
+  filter(n_eff>3) %>% 
+  ggplot(aes(x = n_eff, y = Rhat))+
+  geom_point()+
+  geom_hline(yintercept = 1.01, lty = 2)+
+  geom_vline(xintercept = 400, lty = 2)
+
+post <- extract(fit)
+```
+
+```{r fryemerge, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8}
+env_post <- env.df
+env_post$day_peak_median <- round(apply(post$day_peak* sd(emergence_select$yday) + mean(emergence_select$yday), 2, median))
+
+
+library(geomtextpath)
+
+env_post <- left_join(env_post, spread_draws(fit, emerging_fry_ln[year, day]) %>% 
+                        mutate(year = init_year + year) %>% 
+                        group_by(year, day) %>% 
+                        summarise(emerge_fry_apex = median(exp(emerging_fry_ln))) %>% 
+                        group_by(year) %>% 
+                        filter(emerge_fry_apex == max(emerge_fry_apex)) %>% select(-day))
+
+p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>% 
+  mutate(year = init_year + year) %>% 
+  mutate(date_stnd = day + min(emergence_select$yday) - 1) %>% 
+  left_join(env_post) %>% 
+  group_by(year, date_stnd, new_moon_yday) %>% 
+  summarise(fry = median(exp(emerging_fry_ln))) %>% 
+  ggplot(aes(x = date_stnd, y = fry, group = year, color = year))+
+  geom_line(size = 1)+
+  #geom_text(data = env_post, aes(x = day_peak_median, y = emerge_fry_apex+10, color = NULL, label = year))+
+  #geom_textline(aes(label = year), hjust = 0.5, size = 3, linewidth = 1) +
+  xlab("")+
+  ylab("# of emerging fry (relative abund.)")+
+  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D")+
+  scale_y_continuous(limits = c(0, 550), expand = c(0, 0),  name = "Estimated peak emergence date",
+                     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"))+
+  theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
+  scale_x_continuous(
+    name = "",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
+  )
+
+  
+  
+p2 <- gather_draws(fit, b_ATU) %>%
+  bind_rows(gather_draws(fit, b_moon), 
+            gather_draws(fit, b_moonxATU)) %>% 
+  mutate(.variable = case_when(.variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
+  mutate(.variable = factor(.variable, levels = c("moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
+  ggplot(aes(x = .variable, y = .value))+
+  geom_hline(yintercept = 0, lty = 2)+
+  stat_pointinterval(.width = c(0.5, 0.98))+
+  ylab("Estimated effect on emergence timing")+
+  xlab("Covariate")
+
+  
+p3 <- spread_draws(fit, day_peak[year]) %>% 
+     mutate(year = init_year + year) %>%
+     mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+     left_join(env_post) %>% 
+     mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
+     ggplot(aes(x = new_moon_yday, y = day_peak, color = year, group = year))+
+     geom_abline(slope = 1, intercept = 0, lty = 2)+
+     stat_pointinterval(.width = c(0.5, 0.89))+
+     #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+     scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
+     scale_y_continuous(
+       name = "Estimated peak emergence date",
+       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+     ) +
+     scale_x_continuous(
+       name = "Date of new moon",
+       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+     ) +
+     coord_cartesian(xlim = c(97, 126), ylim = c(97, 126))
+     
+     
+p4 <- spread_draws(fit, day_peak[year]) %>% 
+     mutate(year = init_year + year) %>%
+     mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+     left_join(env_post) %>% 
+     ggplot(aes(x = ATU, y = day_peak, color = year, group = year))+
+     stat_pointinterval(.width = c(0.5, 0.89))+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+     scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
+     scale_y_continuous(
+       name = "Estimated peak emergence date",
+       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+     ) +
+     scale_x_continuous(
+       name = expression("Accumulated thermal units ("*degree*C*")")
+     )
+  
+(p1 + p2 + plot_layout(widths = c(1, 0.2))) / 
+  (p3 + p4) + 
+  plot_annotation(tag_levels = "A")
+
+```
+
+```{r spawner_fry, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6.5, fig.height=8}
+spawnV <- seq(min(env.df$spawners, na.rm = TRUE), max(env.df$spawners, na.rm = TRUE), length = 30)
+
+FWMT_BH.df <- data.frame()
+for(j in 0:1){
+  alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
+  for(i in 1:length(spawnV)){
+    mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
+    total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "exceeded")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
+  }
+}
+
+FWMT_BH_summary.df<- FWMT_BH.df %>% 
+  group_by(spawners, FWMT_range) %>% 
+  summarise(l95 = quantile(total_fry, probs = 0.025), 
+            u95 = quantile(total_fry, probs = 0.975),
+            l50 = quantile(total_fry, probs = 0.25), 
+            u50 = quantile(total_fry, probs = 0.75),
+            total_fry = median(total_fry))
+
+alpha_sf <- exp(post$alpha0 + post$a_FWMT * 0)
+mu_FWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
+alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
+mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
+
+FWMT_percent_change <- data.frame(FWMT_percent_change = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, draws = 1:length(mu_FWMT))
+
+#mean(FWMT_percent_change$FWMT_percent_change>0)
+#mean(FWMT_percent_change$FWMT_percent_change>7)
+
+env_post$fry_abund_predict <- apply(exp(post$total_fry_ln), 2, median)
+
+p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
+  geom_ribbon(aes(ymin = l50, ymax = u50), alpha =0.2, color = NA)+
+  geom_line()+
+  geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "exceeded")), aes(y = fry_abund_predict))+
+  stat_pointinterval(data = spread_draws(fit, total_fry_ln[year]) %>% 
+                       mutate(year = init_year + year) %>% 
+                       left_join(env_post %>% 
+                                   mutate(FWMT_range = ifelse(non_range_days > 0, "exceeded", "within")) %>% 
+                                   select(year, FWMT_range, spawners)) %>% 
+                       mutate(total_fry = exp(total_fry_ln)), 
+                     .width = c(0.5, 0.89))+
+  geom_text_repel(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "exceeded")), aes(y = fry_abund_predict, label = brood_year), nudge_x = 1e4, direction = "x", show.legend = FALSE)+
+  scale_color_manual(values = c("red", "black"))+
+  scale_fill_manual(values = c("red", "black"))+
+  ylab("fry abundance (relative)")+
+  theme(legend.position = c(0.05, 0.95), legend.justification = c(0, 1))
+  
+p3 <- FWMT_percent_change %>% 
+  ggplot(aes(x = "", y = FWMT_percent_change))+
+  geom_hline(yintercept = 0, lty = 2)+
+  stat_pointinterval(.width = c(0.5, 0.89))+
+  ylab("FWMT adherence % change in fry production")+
+  xlab("")
+  
+p2 <-  gather_draws(fit, sf_ATU) %>%
+  bind_rows(gather_draws(fit, a_FWMT), 
+            gather_draws(fit, a_testalinden)) %>% 
+  ggplot(aes(x = .variable, y = .value))+
+  geom_hline(yintercept = 0, lty = 2)+
+  stat_pointinterval(.width = c(0.5,.89))+
+  ylab("estimate")+
+  xlab("")
+
+p1 / (p2 + p3 + plot_layout(widths = c(1, 0.2))) + 
+  plot_layout(heights = c(1, 0.6))+
+  plot_annotation(tag_levels = "A")
+```
