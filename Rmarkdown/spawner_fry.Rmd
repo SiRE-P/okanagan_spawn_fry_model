@@ -43,6 +43,7 @@ library(janitor)
 library(lunar)
 library(patchwork)
 library(ggrepel)
+library(scales)
 
 library(rstan)
 library(tidybayes)
@@ -110,8 +111,14 @@ ggplot(temp_means, aes(x = yday(date), y = temperature))+
   geom_line()+
   facet_wrap(~year(date))
 
+incubation_start_full <- as.Date("2025-11-01")
+incubation_end_full <- as.Date("2025-04-10")
+
+incubation_start <- format(incubation_start_full, "%B ") %>%
+  paste0(as.integer(format(incubation_start_full, "%d")))
+
 ATU.df <- temp_means %>% 
-  mutate(year_start = if_else(format(date, "%m-%d") >= "11-15",
+  mutate(year_start = if_else(format(date, "%m-%d") >= format(incubation_start_full, "%m-%d"),
                               year(date),
                               year(date) - 1)) %>% 
   group_by(year_start) %>% 
@@ -125,7 +132,7 @@ ggplot(ATU.df, aes(x = yday(date), y = ATU, color = factor(year_start)))+
 ATU_day100 <- ATU.df %>% 
   mutate(yday = yday(date)) %>% 
   mutate(year = year(date)) %>%
-  filter(yday == 100)
+  filter(yday == yday(incubation_end_full))
 
 ATU_day700 <- ATU.df %>% 
   mutate(yday = yday(date)) %>% 
@@ -150,7 +157,7 @@ flow <- read.csv("../../../okanagan_data/2025-03-11 Draft/daily_mean_flow.csv") 
   mutate(month_day = format(date, "%m-%d")) %>% 
   group_by(month_day) %>% 
   mutate(life_stage = first(life_stage)) %>% 
-  mutate(life_stage2 = ifelse(month_day > "10-31" | month_day < "04-01", "incubation", life_stage)) %>% 
+  mutate(life_stage2 = ifelse(month_day >= format(incubation_start_full, "%m-%d") | month_day <= format(incubation_end_full, "%m-%d"), "incubation", life_stage)) %>% 
   mutate(life_stage = factor(life_stage, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
   mutate(life_stage2 = factor(life_stage2, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
   ungroup()
@@ -277,7 +284,7 @@ worst_Rhat %>%
 post <- extract(fit)
 ```
 
-```{r fryemerge, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8}
+```{r fryemerge, echo=FALSE, message=FALSE, warning=FALSE}
 env_post <- env.df
 env_post$day_peak_median <- round(apply(post$day_peak* sd(emergence_select$yday) + mean(emergence_select$yday), 2, median))
 
@@ -304,8 +311,7 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   xlab("")+
   ylab("# of emerging fry (relative abund.)")+
   scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D")+
-  scale_y_continuous(limits = c(0, 550), expand = c(0, 0),  name = "Estimated peak emergence date",
-                     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"))+
+  scale_y_continuous(limits = c(0, 550), expand = c(0, 0))+
   theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
   scale_x_continuous(
     name = "",
@@ -362,14 +368,16 @@ p4 <- spread_draws(fit, day_peak[year]) %>%
        name = expression("Accumulated thermal units ("*degree*C*")")
      )
   
-(p1 + p2 + plot_layout(widths = c(1, 0.2))) / 
+fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.25))) / 
   (p3 + p4) + 
   plot_annotation(tag_levels = "A")
 
+fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU). Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal unitis (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 50% and 89% credible intervals.")
+
 ```
 
-```{r spawner_fry, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6.5, fig.height=8}
-spawnV <- seq(min(env.df$spawners, na.rm = TRUE), max(env.df$spawners, na.rm = TRUE), length = 30)
+```{r spawner_fry, echo=FALSE, message=FALSE, warning=FALSE}
+spawnV <- seq(0, max(env.df$spawners, na.rm = TRUE), length = 30)
 
 FWMT_BH.df <- data.frame()
 for(j in 0:1){
@@ -377,7 +385,7 @@ for(j in 0:1){
   for(i in 1:length(spawnV)){
     mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
     total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
-    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "exceeded")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
   }
 }
 
@@ -394,47 +402,89 @@ mu_FWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
 mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
 
-FWMT_percent_change <- data.frame(FWMT_percent_change = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, draws = 1:length(mu_FWMT))
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * min(dat_list$ATU))
+mu_lowATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * max(dat_list$ATU))
+mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05);
 
-#mean(FWMT_percent_change$FWMT_percent_change>0)
-#mean(FWMT_percent_change$FWMT_percent_change>7)
+fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU)
 
 env_post$fry_abund_predict <- apply(exp(post$total_fry_ln), 2, median)
 
 p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
   geom_ribbon(aes(ymin = l50, ymax = u50), alpha =0.2, color = NA)+
   geom_line()+
-  geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "exceeded")), aes(y = fry_abund_predict))+
+  geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")), aes(y = fry_abund_predict))+
   stat_pointinterval(data = spread_draws(fit, total_fry_ln[year]) %>% 
                        mutate(year = init_year + year) %>% 
                        left_join(env_post %>% 
-                                   mutate(FWMT_range = ifelse(non_range_days > 0, "exceeded", "within")) %>% 
+                                   mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")) %>% 
                                    select(year, FWMT_range, spawners)) %>% 
                        mutate(total_fry = exp(total_fry_ln)), 
                      .width = c(0.5, 0.89))+
-  geom_text_repel(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "exceeded")), aes(y = fry_abund_predict, label = brood_year), nudge_x = 1e4, direction = "x", show.legend = FALSE)+
-  scale_color_manual(values = c("red", "black"))+
-  scale_fill_manual(values = c("red", "black"))+
-  ylab("fry abundance (relative)")+
-  theme(legend.position = c(0.05, 0.95), legend.justification = c(0, 1))
+geom_text_repel(
+  data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")),
+  aes(y = fry_abund_predict, label = brood_year),
+  nudge_x = -10000,           # consistent rightward offset
+  direction = "y",           # only allow vertical movement
+  box.padding = 0.2,         # optional fine-tuning
+  min.segment.length = 0,    # ensures connecting lines are drawn
+  segment.alpha = 0.5,
+  size = 3,
+  show.legend = FALSE
+)+
+  scale_color_manual(values = c("red", "black"), "FWMT range")+
+  scale_fill_manual(values = c("red", "black"), "FWMT range")+
+  ylab("Fry abundance (relative)")+
+  theme(legend.position = c(0.05, 0.95), legend.justification = c(0, 1))+
+  scale_x_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Spawner abundance (thousands)")
   
-p3 <- FWMT_percent_change %>% 
-  ggplot(aes(x = "", y = FWMT_percent_change))+
+p3 <- fry_percent_change %>%
+  gather(key = variable, value = percent_change, -draw) %>% 
+  ggplot(aes(x = variable, y = percent_change))+
   geom_hline(yintercept = 0, lty = 2)+
   stat_pointinterval(.width = c(0.5, 0.89))+
-  ylab("FWMT adherence % change in fry production")+
-  xlab("")
+  ylab("% change in fry production")+
+  xlab("")+
+  scale_x_discrete(labels = c(
+  "ATU" = "High\nATUs",
+  "FWMT" = "FWMT\ncompliant"
+  ))
   
-p2 <-  gather_draws(fit, sf_ATU) %>%
-  bind_rows(gather_draws(fit, a_FWMT), 
-            gather_draws(fit, a_testalinden)) %>% 
-  ggplot(aes(x = .variable, y = .value))+
-  geom_hline(yintercept = 0, lty = 2)+
-  stat_pointinterval(.width = c(0.5,.89))+
-  ylab("estimate")+
-  xlab("")
+# p2 <-  gather_draws(fit, sf_ATU) %>%
+#   bind_rows(gather_draws(fit, a_FWMT), 
+#             gather_draws(fit, a_testalinden)) %>% 
+#   ggplot(aes(x = .variable, y = .value))+
+#   geom_hline(yintercept = 0, lty = 2)+
+#   stat_pointinterval(.width = c(0.5,.89))+
+#   ylab("estimate")+
+#   xlab("")
 
-p1 / (p2 + p3 + plot_layout(widths = c(1, 0.2))) + 
-  plot_layout(heights = c(1, 0.6))+
+fig_spawn_fry <- p1 + p3 + 
+  plot_layout(widths = c(1, 0.4)) + 
   plot_annotation(tag_levels = "A")
+
+fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and 50% credible intervals of the spawner–fry relationships. Points and error bars show the posterior medians with 50% and 89% credible intervals.")
 ```
+# Abstract
+Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (89% CI:`r round(quantile(fry_percent_change$FWMT, 0.065))`--`r round(quantile(fry_percent_change$FWMT, 0.945))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
+
+# Introduction
+
+# Methods
+
+# Results
+
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8, fig.cap= fig_fry_emerge_cap}
+fig_fry_emerge
+```
+
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=5, fig.cap=fig_spawn_fry_cap}
+fig_spawn_fry
+```
+
+# Discussion
+
+# Acknowldgements
+
+# References
