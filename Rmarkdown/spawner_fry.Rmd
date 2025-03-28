@@ -11,6 +11,7 @@ output:
       number_sections: false
       fig_caption: true
       keep_tex: false
+      mathjax: default
 csl: ../../../citation_resources/canadian-journal-of-fisheries-and-aquatic-sciences.csl
 bibliography: ../../../citation_resources/plt_library.bib
 always_allow_html: true
@@ -111,7 +112,7 @@ ggplot(temp_means, aes(x = yday(date), y = temperature))+
   geom_line()+
   facet_wrap(~year(date))
 
-incubation_start_full <- as.Date("2025-11-01")
+incubation_start_full <- as.Date("2025-10-15")
 incubation_end_full <- as.Date("2025-04-10")
 
 incubation_start <- format(incubation_start_full, "%B ") %>%
@@ -349,8 +350,7 @@ p3 <- spread_draws(fit, day_peak[year]) %>%
      scale_x_continuous(
        name = "Date of new moon",
        labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-     ) +
-     coord_cartesian(xlim = c(97, 126), ylim = c(97, 126))
+     ) 
      
      
 p4 <- spread_draws(fit, day_peak[year]) %>% 
@@ -383,16 +383,17 @@ FWMT_BH.df <- data.frame()
 for(j in 0:1){
   alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
   for(i in 1:length(spawnV)){
-    mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
-    total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
+    total_fry = (alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05)
+    #mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
+    #total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
     FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
   }
 }
 
 FWMT_BH_summary.df<- FWMT_BH.df %>% 
   group_by(spawners, FWMT_range) %>% 
-  summarise(l95 = quantile(total_fry, probs = 0.025), 
-            u95 = quantile(total_fry, probs = 0.975),
+  summarise(l89 = quantile(total_fry, probs = 0.065), 
+            u89 = quantile(total_fry, probs = 0.945),
             l50 = quantile(total_fry, probs = 0.25), 
             u50 = quantile(total_fry, probs = 0.75),
             total_fry = median(total_fry))
@@ -412,6 +413,7 @@ fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), FWMT = 100 * (mu_FWMT
 env_post$fry_abund_predict <- apply(exp(post$total_fry_ln), 2, median)
 
 p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
+  geom_ribbon(aes(ymin = l89, ymax = u89), alpha =0.2, color = NA)+
   geom_ribbon(aes(ymin = l50, ymax = u50), alpha =0.2, color = NA)+
   geom_line()+
   geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")), aes(y = fry_abund_predict))+
@@ -464,7 +466,7 @@ fig_spawn_fry <- p1 + p3 +
   plot_layout(widths = c(1, 0.4)) + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and 50% credible intervals of the spawner–fry relationships. Points and error bars show the posterior medians with 50% and 89% credible intervals.")
+fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 50% and 89% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 50% and 89% credible intervals for year-specific estimates (A) and effect sizes (B).")
 ```
 # Abstract
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (89% CI:`r round(quantile(fry_percent_change$FWMT, 0.065))`--`r round(quantile(fry_percent_change$FWMT, 0.945))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
@@ -472,6 +474,22 @@ Maintaining flows during the incubation-period within the target range from the 
 # Introduction
 
 # Methods
+
+\begin{equation} \label{eq1}
+\begin{aligned}
+\text{fry}^{\text{obs}}_{i} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
+\mu^{\text{fry}}_i &= \exp\left( \log E_{y_i, d_i} - \frac{(h_i - h^{\text{peak}}_{y_i})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
+h^{\text{peak}} &\sim \text{Normal}(h_{\mu}^{\text{peak}}, h_{\sigma}^{\text{peak}}) \\
+h_{\mu}^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
+h_{\sigma}^{\text{peak}} &\sim \text{Exponential}(10)\\
+\log(h^{\text{sd}}_y) &\sim \text{Normal}(h^{\text{sd}}_\mu, h^{\text{sd}}_\sigma)\\
+h^{\text{sd}}_\mu &\sim \text{Normal}(-0.5, 0.5)\\
+h^{\text{sd}}_\sigma &\sim \text{Exponential}(10)\\
+\beta^{\text{soak}} &\sim \text{Exponential}(1) \\
+\phi^{\text{fry}} &\sim \text{Exponential}(1) \\
+\end{aligned}
+\end{equation}
+
 
 # Results
 
@@ -485,6 +503,6 @@ fig_spawn_fry
 
 # Discussion
 
-# Acknowldgements
+# Acknowledgements
 
 # References
