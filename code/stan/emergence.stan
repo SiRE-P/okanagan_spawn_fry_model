@@ -21,6 +21,7 @@ data {
   int day[N]; //observation day index
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[Y] ATU; //ATUs on day 100
+  vector[N] dusk; //dusk on day of observation
   int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
 
   int N_missing_spawners;
@@ -32,15 +33,15 @@ data {
   vector[D] day_std; //sequence of all days to be predicted
   
   real sigma_sf_prior;
+  real alpha_sf_prior;
   real beta_sf_prior;
-  real eq_ratio_prior;
+  real alpha_sf_sigma_prior;
   real beta_sf_sigma_prior;
-  real eq_ratio_sigma_prior;
 }
 
 parameters {
   real<lower=0> beta_sf;
-  real<lower=0> eq_ratio; 
+  real alpha0; 
   real<lower=0> sigma_sf;
   vector[Y] total_fry_ln;
   
@@ -51,7 +52,8 @@ parameters {
   real b_moon;
   real b_ATU;
   real b_moonxATU;
-  
+  real b_dusk;
+
   real hour_peak_mu;
   real hour_sd_mu;
   real day_peak_mu;
@@ -78,14 +80,11 @@ transformed parameters{
   spawners_merge = merge_missing(spawners_missidx, to_vector(spawners), spawners_impute);
   
   //non-centered priors
-  real alpha0 = log(eq_ratio * beta_sf);
 
-  vector[Y] hour_peak;
   vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
   
-  hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z;
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
         b_moon * new_moon_date + 
@@ -116,8 +115,9 @@ transformed parameters{
 
 model {
   //spawner fry beverton-holt
+  
+  alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
   beta_sf ~ lognormal(beta_sf_prior, beta_sf_sigma_prior);
-  eq_ratio ~ lognormal(eq_ratio_prior, eq_ratio_sigma_prior);
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
@@ -135,6 +135,7 @@ model {
   b_moon ~ normal(0, 0.5);
   b_ATU ~ normal(0, 0.5);
   b_moonxATU ~ normal(0, 0.5);
+  b_dusk ~ normal(0, 0.5);
   
   hour_peak_mu ~ normal(0, 0.5);
   hour_sd_mu ~ normal(-0.5, 0.5);
@@ -153,7 +154,9 @@ model {
   emerg_obs_error ~ exponential(1);
   
   for(i in 1:N){
-    real obs_offset = -((hour[i] - hour_peak[year[i]])^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
+    real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
+        b_dusk * dusk[i];
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     fry_obs[i] ~ neg_binomial_2(emerge_mu, 1/emerg_obs_error);
   }

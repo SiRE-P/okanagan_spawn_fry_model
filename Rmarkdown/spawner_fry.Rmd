@@ -42,6 +42,7 @@ library(kableExtra)
 library(tidyverse)
 library(janitor)
 library(lunar)
+library(suncalc)
 library(patchwork)
 library(ggrepel)
 library(scales)
@@ -81,9 +82,27 @@ for(i in 1:length(unique(emergence$sample_year))){
 
 emergence <- emergence %>% left_join(new_moons %>% rename(sample_year = year))
 
-emergence_select <- emergence %>% select(brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric) %>% 
+emergence_select <- emergence %>% select(date, brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric) %>% 
+  mutate(date = as.Date(date)) %>% 
   filter(time_set_numeric > 0) %>% 
   filter(!is.na(total_catch))
+```
+
+
+```{r dusk, include = FALSE, warning=FALSE}
+dusk <- getSunlightTimes(date = emergence_select$date, lat = 49.1823, lon = -119.5504, keep = "dusk", tz = "Etc/GMT+7")
+
+dusk <- dusk %>% 
+  mutate(yday = yday(date)) %>%
+  mutate(dusk_hour = hour(dusk) + minute(dusk)/60)
+
+ggplot(dusk, aes(x = yday, y = dusk_hour))+
+  geom_point()
+
+emergence_select$dusk <- dusk$dusk_hour
+
+ggplot(emergence_select, aes(x = yday, y = dusk))+
+  geom_point()
 ```
 
 ```{r thermal_units, include = FALSE, warning=FALSE}
@@ -227,6 +246,7 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  hour = stand(emergence_select$time_set_numeric),
                  new_moon_date = stand(env.df$new_moon_yday),
                  ATU = stand(env.df$ATU),
+                 dusk = stand(emergence_select$dusk), 
                  exceeded_FWMT = as.numeric(env.df$non_range_days>0),
                  testalinden = ifelse(env.df$year == 2011, 1, 0),
                  day_std = (dayV - mean(emergence_select$yday))/sd(emergence_select$yday),
@@ -238,11 +258,11 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  log_spawners_mean = mean(log(env.df$spawners), na.rm= TRUE),
                  log_spawners_sd = sd(log(env.df$spawners), na.rm= TRUE),
                  
-                 sigma_sf_prior = 4,
-                 beta_sf_prior = log(2.5),
-                 eq_ratio_prior = log(0.03),
-                 beta_sf_sigma_prior = 0.7,
-                 eq_ratio_sigma_prior = 0.2
+                 sigma_sf_prior = 1,
+                 beta_sf_prior = 1,
+                 alpha_sf_prior = -3,
+                 beta_sf_sigma_prior = 1,
+                 alpha_sf_sigma_prior = 1
 )
 
 init_year <- min(emergence_select$sample_year) - 1
@@ -319,60 +339,61 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
   )
 
-  
-  
+
+
 p2 <- gather_draws(fit, b_ATU) %>%
   bind_rows(gather_draws(fit, b_moon), 
-            gather_draws(fit, b_moonxATU)) %>% 
-  mutate(.variable = case_when(.variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
-  mutate(.variable = factor(.variable, levels = c("moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
+            gather_draws(fit, b_moonxATU),
+            gather_draws(fit, b_dusk)) %>% 
+  mutate(.variable = case_when(.variable == "b_dusk" ~ "dusk", .variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
+  mutate(.variable = factor(.variable, levels = c("dusk","moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
   ggplot(aes(x = .variable, y = .value))+
   geom_hline(yintercept = 0, lty = 2)+
   stat_pointinterval(.width = c(0.5, 0.98))+
   ylab("Estimated effect on emergence timing")+
   xlab("Covariate")
 
-  
+
 p3 <- spread_draws(fit, day_peak[year]) %>% 
-     mutate(year = init_year + year) %>%
-     mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-     left_join(env_post) %>% 
-     mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
-     ggplot(aes(x = new_moon_yday, y = day_peak, color = year, group = year))+
-     geom_abline(slope = 1, intercept = 0, lty = 2)+
-     stat_pointinterval(.width = c(0.5, 0.89))+
-     #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-     scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
-     scale_y_continuous(
-       name = "Estimated peak emergence date",
-       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-     ) +
-     scale_x_continuous(
-       name = "Date of new moon",
-       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-     ) 
-     
-     
+  mutate(year = init_year + year) %>%
+  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+  left_join(env_post) %>% 
+  mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
+  ggplot(aes(x = new_moon_yday, y = day_peak, color = year, group = year))+
+  geom_abline(slope = 1, intercept = 0, lty = 2)+
+  stat_pointinterval(.width = c(0.5, 0.89))+
+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
+  scale_y_continuous(
+    name = "Estimated peak emergence date",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+  ) +
+  scale_x_continuous(
+    name = "Date of new moon",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+  ) 
+
+
 p4 <- spread_draws(fit, day_peak[year]) %>% 
-     mutate(year = init_year + year) %>%
-     mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-     left_join(env_post) %>% 
-     ggplot(aes(x = ATU, y = day_peak, color = year, group = year))+
-     stat_pointinterval(.width = c(0.5, 0.89))+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-     scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
-     scale_y_continuous(
-       name = "Estimated peak emergence date",
-       labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-     ) +
-     scale_x_continuous(
-       name = expression("Accumulated thermal units ("*degree*C*")")
-     )
-  
-fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.25))) / 
+  mutate(year = init_year + year) %>%
+  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+  left_join(env_post) %>% 
+  ggplot(aes(x = ATU, y = day_peak, color = year, group = year))+
+  stat_pointinterval(.width = c(0.5, 0.89))+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
+  scale_y_continuous(
+    name = "Estimated peak emergence date",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+  ) +
+  scale_x_continuous(
+    name = expression("Accumulated thermal units ("*degree*C*")")
+  )
+
+fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.3))) / 
   (p3 + p4) + 
   plot_annotation(tag_levels = "A")
 
-fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU). Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal unitis (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 50% and 89% credible intervals.")
+fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect of the timing of dusk (dusk), the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU) on emergence timing. Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal units (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 50% and 89% credible intervals.")
 
 ```
 
@@ -414,7 +435,7 @@ env_post$fry_abund_predict <- apply(exp(post$total_fry_ln), 2, median)
 
 p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
   geom_ribbon(aes(ymin = l89, ymax = u89), alpha =0.2, color = NA)+
-  geom_ribbon(aes(ymin = l50, ymax = u50), alpha =0.2, color = NA)+
+  #geom_ribbon(aes(ymin = l50, ymax = u50), alpha =0.2, color = NA)+
   geom_line()+
   geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")), aes(y = fry_abund_predict))+
   stat_pointinterval(data = spread_draws(fit, total_fry_ln[year]) %>% 
@@ -424,23 +445,23 @@ p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_r
                                    select(year, FWMT_range, spawners)) %>% 
                        mutate(total_fry = exp(total_fry_ln)), 
                      .width = c(0.5, 0.89))+
-geom_text_repel(
-  data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")),
-  aes(y = fry_abund_predict, label = brood_year),
-  nudge_x = -10000,           # consistent rightward offset
-  direction = "y",           # only allow vertical movement
-  box.padding = 0.2,         # optional fine-tuning
-  min.segment.length = 0,    # ensures connecting lines are drawn
-  segment.alpha = 0.5,
-  size = 3,
-  show.legend = FALSE
-)+
+  geom_text_repel(
+    data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")),
+    aes(y = fry_abund_predict, label = brood_year),
+    nudge_x = -10000,           # consistent rightward offset
+    direction = "y",           # only allow vertical movement
+    box.padding = 0.2,         # optional fine-tuning
+    min.segment.length = 0,    # ensures connecting lines are drawn
+    segment.alpha = 0.5,
+    size = 3,
+    show.legend = FALSE
+  )+
   scale_color_manual(values = c("red", "black"), "FWMT range")+
   scale_fill_manual(values = c("red", "black"), "FWMT range")+
   ylab("Fry abundance (relative)")+
   theme(legend.position = c(0.05, 0.95), legend.justification = c(0, 1))+
   scale_x_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Spawner abundance (thousands)")
-  
+
 p3 <- fry_percent_change %>%
   gather(key = variable, value = percent_change, -draw) %>% 
   ggplot(aes(x = variable, y = percent_change))+
@@ -449,10 +470,10 @@ p3 <- fry_percent_change %>%
   ylab("% change in fry production")+
   xlab("")+
   scale_x_discrete(labels = c(
-  "ATU" = "High\nATUs",
-  "FWMT" = "FWMT\ncompliant"
+    "ATU" = "High\nATUs",
+    "FWMT" = "FWMT\ncompliant"
   ))
-  
+
 # p2 <-  gather_draws(fit, sf_ATU) %>%
 #   bind_rows(gather_draws(fit, a_FWMT), 
 #             gather_draws(fit, a_testalinden)) %>% 
@@ -466,30 +487,60 @@ fig_spawn_fry <- p1 + p3 +
   plot_layout(widths = c(1, 0.4)) + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 50% and 89% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 50% and 89% credible intervals for year-specific estimates (A) and effect sizes (B).")
+fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 89% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 50% and 89% credible intervals for year-specific estimates (A) and effect sizes (B).")
 ```
 # Abstract
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (89% CI:`r round(quantile(fry_percent_change$FWMT, 0.065))`--`r round(quantile(fry_percent_change$FWMT, 0.945))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
 
 # Introduction
 
-# Methods
-
-\begin{equation} \label{eq1}
+# Methods  
+We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.
+\begin{equation} \label{fry_abund_eq}
 \begin{aligned}
-\text{fry}^{\text{obs}}_{i} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log E_{y_i, d_i} - \frac{(h_i - h^{\text{peak}}_{y_i})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
-h^{\text{peak}} &\sim \text{Normal}(h_{\mu}^{\text{peak}}, h_{\sigma}^{\text{peak}}) \\
-h_{\mu}^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
-h_{\sigma}^{\text{peak}} &\sim \text{Exponential}(10)\\
-\log(h^{\text{sd}}_y) &\sim \text{Normal}(h^{\text{sd}}_\mu, h^{\text{sd}}_\sigma)\\
-h^{\text{sd}}_\mu &\sim \text{Normal}(-0.5, 0.5)\\
-h^{\text{sd}}_\sigma &\sim \text{Exponential}(10)\\
+\hat{N}_{y, d}^{\text{fry}} = \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
+\log \hat{N}_y^{\text{fry}}{}_{\text{max}} &= \log N_y^{\text{fry}} - \log( 2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}} )\\
+d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta^{\text{moonxATU}} \cdot (\text{moon}_y \cdot \text{ATU}_y), \sigma_d^{\text{peak}})\\
+\mu_d^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_d^{\text{peak}} &\sim \text{Exponential}(1)\\
+\log d_y^{\text{sd}} &\sim \text{Normal}(\mu_d^{\text{sd}}, \sigma_d^{\text{sd}})\\
+\mu_d^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
+\sigma_d^{\text{sd}} &\sim \text{Exponential}(1)\\
+\log h^{\text{sd}}_y &\sim \text{Normal}(\mu_h^{\text{sd}}, \sigma_h^{\text{sd}})\\
+\mu_h^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
+\beta^{\text{moon}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{moonxATU}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
+\end{aligned}
+\end{equation}
+
+\begin{equation} \label{emerge_obs_eq}
+\begin{aligned}
+N_i^{\text{fry}}{}_{\text{obs}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} - \frac{(h_i - h_i^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
+h_i^{\text{peak}} = \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
+\mu_{h, y}^{\text{peak}} \sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
+\mu_h^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_h^{\text{peak}} &\sim \text{Exponential}(10)\\
 \beta^{\text{soak}} &\sim \text{Exponential}(1) \\
+\beta^{\text{dusk}} &\sim \text{Normal}(0, 0.5) \\
 \phi^{\text{fry}} &\sim \text{Exponential}(1) \\
 \end{aligned}
 \end{equation}
 
+\begin{equation} \label{spawner_fry_eq}
+\begin{aligned}
+\log N_y^{\text{fry}} &\sim \text{Normal}(\log \mu_y^{sf}, \sigma_{\text{proc}}^{sf})\\
+\mu_y^{sf} &= \frac{\alpha_y^{sf} \cdot N_y^{\text{spawners}}}{1 + \beta^{sf} \cdot N_y^{\text{spawners}}/10^5}\\
+\log \alpha_y^{sf} &= \alpha_0^{sf} + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y\\ 
+\beta^{sf} &\sim \text{Lognormal}(1, 1)\\
+\alpha_0^{sf} &\sim \text{Normal}(-3, 1)\\
+\beta^{\text{FWMT}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_{\text{proc}}^{sf} &\sim \text{Exponential}(1)\\
+\end{aligned}
+\end{equation}
 
 # Results
 
