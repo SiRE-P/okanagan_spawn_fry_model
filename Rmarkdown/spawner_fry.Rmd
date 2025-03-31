@@ -498,7 +498,7 @@ Maintaining flows during the incubation-period within the target range from the 
 We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.
 \begin{equation} \label{fry_abund_eq}
 \begin{aligned}
-\hat{N}_{y, d}^{\text{fry}} = \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
+\hat{N}_{y, d}^{\text{fry}} &= \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
 \log \hat{N}_y^{\text{fry}}{}_{\text{max}} &= \log N_y^{\text{fry}} - \log( 2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}} )\\
 d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta^{\text{moonxATU}} \cdot (\text{moon}_y \cdot \text{ATU}_y), \sigma_d^{\text{peak}})\\
 \mu_d^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
@@ -508,10 +508,10 @@ d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} 
 \sigma_d^{\text{sd}} &\sim \text{Exponential}(1)\\
 \log h^{\text{sd}}_y &\sim \text{Normal}(\mu_h^{\text{sd}}, \sigma_h^{\text{sd}})\\
 \mu_h^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
+\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
 \beta^{\text{moon}} &\sim \text{Normal}(0, 0.5)\\
 \beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
 \beta^{\text{moonxATU}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
 \end{aligned}
 \end{equation}
 
@@ -519,8 +519,8 @@ d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} 
 \begin{aligned}
 N_i^{\text{fry}}{}_{\text{obs}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
 \mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} - \frac{(h_i - h_i^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
-h_i^{\text{peak}} = \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
-\mu_{h, y}^{\text{peak}} \sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
+h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
+\mu_{h, y}^{\text{peak}} &\sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
 \mu_h^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
 \sigma_h^{\text{peak}} &\sim \text{Exponential}(10)\\
 \beta^{\text{soak}} &\sim \text{Exponential}(1) \\
