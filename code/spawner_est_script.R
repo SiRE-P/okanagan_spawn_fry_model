@@ -10,6 +10,13 @@ library(rvest)
 spawners <- read.csv("../../okanagan_data/2025-04-07 Draft/Spawn Timing Data/spawn_timing.csv") %>% 
   mutate(date = as.Date(date), year = year(date), yday = yday(date))
 
+spawners_old <- readxl::read_excel("./../../data/Okanagan/!CNAT 2020/CNAT_Escapement Units_2020.xlsx", sheet = "Escapement Units") %>% 
+  janitor::clean_names()
+spawners_old <- select(spawners_old, brood_year = year, spawners = au_criver) %>% 
+  filter(!is.na(brood_year)) %>% 
+  mutate(fry_year = brood_year + 1) %>% 
+  arrange(brood_year)
+
 oso_sk <- spawners %>% 
   mutate(location = ifelse(location == "Channel", "VDS", location)) %>% 
   group_by(location, year, yday, date) %>% 
@@ -23,9 +30,9 @@ oso_sk <- spawners %>%
   mutate(day_ind = as.numeric(factor(yday)), 
          year_ind = as.numeric(factor(year))) %>% 
   filter(!(is.na(live) & is.na(dead))) %>% 
-  mutate(location = factor(location, levels = c("Index", "VDS", "Above McIntyre Dam"), ordered = TRUE)) %>% 
+  mutate(location = factor(location, levels = c("Index", "VDS", "Above McIntyre Dam"), ordered = TRUE))
   #filter(!(location == "Above McIntyre Dam" & year == 2010)) %>% 
-  filter(live>0)
+  #filter(live>0)
 
 oso_sk %>% 
   ggplot(aes(x = yday, y = live, color = location))+
@@ -65,7 +72,7 @@ Wells_data <- read_html("https://www.cbr.washington.edu/dart/cs/php/rpt/adult_an
   type.convert(as.is = TRUE) %>% 
   mutate(count_hrs = ifelse(year<1998, 16, 24), guess_16hrs = FALSE)
 
-Wells16_24 <- readxl::read_excel("../../Ok_sock_lifecycle_model/data/24_hr_dam_counts/Difference between 16- & 24-hour Wells Sockeye counts (1998-2022).xlsx", skip = 2) %>% 
+Wells16_24 <- readxl::read_excel("./../Ok_sock_lifecycle_model/data/24_hr_dam_counts/Difference between 16- & 24-hour Wells Sockeye counts (1998-2022).xlsx", skip = 2) %>% 
   clean_names()
 
 Wells_data <- bind_rows(Wells_data, Wells16_24 %>% select(year, sockeye = x16_hour) %>% mutate(count_hrs = 16, project = "Wells", guess_16hrs = FALSE))
@@ -167,7 +174,7 @@ spread_draws(fit, log_run[year]) %>%
                     group_by(year) %>% 
                     summarise(log_run = mean(log_run), Wells_count = mean(Wells_count)),
                   aes(label = year), color = 1)+
-  geom_abline(slope = 1, intercept = 0, lty = 2)
+  geom_abline(slope = c(0.7, 1), intercept = 0, lty = 2)
 
 spread_draws(fit, log_run[year]) %>% 
   mutate(year = year + min(spawners$year)-1) %>% 
@@ -196,3 +203,51 @@ spread_draws(fit, log_run[year]) %>%
   ggplot(aes(x = year, y = spread_death, color = location, group = location))+
   stat_pointinterval()+
   plot_layout(ncol = 1)
+
+#plot estimated spawner curves####
+spawn_curves.df <- data.frame()
+for(j in 1:ncol(post$log_run)){
+  for(i in 1:sp_dat$n_locations){
+    if(sp_dat$is_valid[j,i] == 1){
+      live <- sapply(1:max(sp_dat$day), FUN = function(x) {
+        entered <- pnorm(x, post$timing[,j,i], post$spread_arrive[,j,i])
+        exited <- pnorm(x, post$timing[,j,i] + post$residence[,i], post$spread_death[,j,i])
+        
+        exp(post$log_run[,j] + log(entered - (entered * exited))) * post$run_prop[,j,i]
+      })
+      
+      spawn_curves.df <- bind_rows(spawn_curves.df, data.frame(year = j + min(spawners$year)-1, 
+                                                               day = 1:max(sp_dat$day)+240,
+                                                               location = location_levels$location[i],
+                                                               fish = apply(live, 2, median),
+                                                               l89 = apply(live, 2, quantile, probs = 0.065),
+                                                               u89 = apply(live, 2, quantile, probs = 0.945)))
+    }
+  }
+}
+
+ggplot(spawn_curves.df, aes(x = day, y = fish, color = location, fill = location))+
+  geom_line()+
+  geom_ribbon(aes(ymin = l89, ymax = u89), color = NA, alpha = 0.2)+
+  facet_wrap(~year, scales = "free_y")+
+  geom_point(data = oso_sk, aes(x = yday, y = live), size = 0.8)+
+  scale_color_brewer(palette = "Set1")+
+  scale_fill_brewer(palette = "Set1")
+
+ggplot(spawn_curves.df, aes(x = day, y = fish))+
+  geom_line()+
+  geom_ribbon(aes(ymin = l89, ymax = u89), color = NA, alpha = 0.2)+
+  facet_grid(location~year, scales = "free_y")+
+  geom_point(data = oso_sk, aes(x = yday, y = live), size = 0.8)+
+  scale_x_continuous(breaks = seq(240, 325, by = 35))
+
+ggplot(spawn_curves.df, aes(x = day, y = fish, color = location, fill = location))+
+  geom_line()+
+  geom_ribbon(aes(ymin = l89, ymax = u89), color = NA, alpha = 0.2)+
+  facet_wrap(~year)+
+  geom_point(data = oso_sk, aes(x = yday, y = live), size = 0.8)+
+  scale_y_log10()+
+  coord_cartesian(ylim = c(1,1e5))+
+  scale_color_brewer(palette = "Set1")+
+  scale_fill_brewer(palette = "Set1")
+
