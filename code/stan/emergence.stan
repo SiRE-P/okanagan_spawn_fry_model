@@ -24,11 +24,8 @@ data {
   vector[N] dusk; //dusk on day of observation
   int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
 
-  int N_missing_spawners;
-  array[N_missing_spawners]  int spawners_missidx;
-  vector[Y] spawners;
-  real log_spawners_mean;
-  real log_spawners_sd;
+  vector[Y] spawner_est;
+  vector[Y] spawner_sd;
   
   vector[D] day_std; //sequence of all days to be predicted
   
@@ -40,6 +37,8 @@ data {
 }
 
 parameters {
+  vector<lower=1>[Y] spawners;
+  
   real<lower=0> beta_sf;
   real alpha0; 
   real<lower=0> sigma_sf;
@@ -71,13 +70,8 @@ parameters {
   
   real<lower=0> emerg_obs_error;
   
-  //missing data
-  vector<lower=0>[N_missing_spawners] spawners_impute;
 }
 transformed parameters{
-  //missing variables
-  vector[Y] spawners_merge;
-  spawners_merge = merge_missing(spawners_missidx, to_vector(spawners), spawners_impute);
   
   //non-centered priors
 
@@ -122,11 +116,11 @@ model {
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
 
-  spawners_merge ~ lognormal(log_spawners_mean, log_spawners_sd);
+  spawners ~ normal(spawner_est, spawner_sd);
 
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
-    real fry_mu_ln = log((alpha_sf[y] * spawners_merge[y])/(1 + beta_sf * spawners_merge[y]/1e05));
+    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + beta_sf * spawners[y]/1e05));
     total_fry_ln[y] ~ normal(fry_mu_ln, sigma_sf);
   }
   

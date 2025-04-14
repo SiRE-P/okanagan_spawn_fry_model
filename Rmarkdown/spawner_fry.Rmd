@@ -220,15 +220,12 @@ env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubati
 
 ```{r spawners, include = FALSE}
 #load CNAT spawners
-spawners <- readxl::read_excel("../../../data/Okanagan/!CNAT 2020/CNAT_Escapement Units_2020.xlsx", sheet = "Escapement Units") %>% 
-  janitor::clean_names()
-spawners <- select(spawners, brood_year = year, spawners = au_criver) %>% 
-  filter(!is.na(brood_year)) %>% 
-  mutate(fry_year = brood_year + 1) %>% 
-  arrange(brood_year)
+spawners <- read.csv("../../collaborations/spawners_scott/outputs/spawners_est.csv") %>% 
+  select(-X) %>% 
+  mutate(fry_year = year + 1)
 
 env.df <- env.df %>% 
-  left_join(spawners, by = c("year" = "fry_year")) %>% 
+  left_join(spawners %>% select(spawners_est = spawners, spawner_sd, fry_year), by = c("year" = "fry_year")) %>% 
   mutate(brood_year = year-1)
 ```
 
@@ -250,13 +247,8 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  exceeded_FWMT = as.numeric(env.df$non_range_days>0),
                  testalinden = ifelse(env.df$year == 2011, 1, 0),
                  day_std = (dayV - mean(emergence_select$yday))/sd(emergence_select$yday),
-                 N_missing_spawners = sum(is.na(env.df$spawners)),
-                 spawners_missidx = which(is.na(env.df$spawners)),
-                 spawners = ifelse(is.na(env.df$spawners), -999, env.df$spawners),
-                 
-                 
-                 log_spawners_mean = mean(log(env.df$spawners), na.rm= TRUE),
-                 log_spawners_sd = sd(log(env.df$spawners), na.rm= TRUE),
+                 spawner_est = env.df$spawners_est,
+                 spawner_sd = env.df$spawner_sd,
                  
                  sigma_sf_prior = 1,
                  beta_sf_prior = 1,
@@ -308,6 +300,8 @@ post <- extract(fit)
 ```{r fryemerge, echo=FALSE, message=FALSE, warning=FALSE}
 env_post <- env.df
 env_post$day_peak_median <- round(apply(post$day_peak* sd(emergence_select$yday) + mean(emergence_select$yday), 2, median))
+
+env_post$spawners <- apply(post$spawners, 2, median)
 
 
 library(geomtextpath)
@@ -487,7 +481,7 @@ fig_spawn_fry <- p1 + p3 +
   plot_layout(widths = c(1, 0.4)) + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 89% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 50% and 89% credible intervals for year-specific estimates (A) and effect sizes (B).")
+fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 89% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 50% and 89% credible intervals for year-specific estimates (A) and effect sizes (B). Year is spawning year/brood year.")
 ```
 # Abstract
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (89% CI:`r round(quantile(fry_percent_change$FWMT, 0.065))`--`r round(quantile(fry_percent_change$FWMT, 0.945))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
