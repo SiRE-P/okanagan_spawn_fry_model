@@ -220,7 +220,7 @@ env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubati
 
 ```{r spawners, include = FALSE}
 #load CNAT spawners
-spawners <- read.csv("../../collaborations/spawners_scott/outputs/spawners_est.csv") %>% 
+spawners <- read.csv("../outputs/spawners_est.csv") %>% 
   select(-X) %>% 
   mutate(fry_year = year + 1)
 
