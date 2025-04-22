@@ -24,8 +24,8 @@ data {
   vector[N] dusk; //dusk on day of observation
   int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
 
-  vector[Y] spawner_est;
-  vector[Y] spawner_sd;
+  vector[Y] spawner_ln_est;
+  vector[Y] spawner_ln_sd;
   
   vector[D] day_std; //sequence of all days to be predicted
   
@@ -116,7 +116,7 @@ model {
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
 
-  spawners ~ normal(spawner_est, spawner_sd);
+  spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
 
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
