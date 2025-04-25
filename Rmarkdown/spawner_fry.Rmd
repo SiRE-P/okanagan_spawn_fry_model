@@ -46,6 +46,8 @@ library(suncalc)
 library(patchwork)
 library(ggrepel)
 library(scales)
+library(dagitty)
+library(ggdag)
 
 library(rstan)
 library(tidybayes)
@@ -490,7 +492,93 @@ Maintaining flows during the incubation-period within the target range from the 
 # Introduction
 
 # Methods  
-We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.
+```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 7}
+knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
+```
+
+The assumed causal pathways are presented in figure \@ref(fig:DAG).  
+
+```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=4.1, fig.pos='center', fig.cap= "Directed acyclic graph showing assumed causal pathways."}
+
+dag <- dagitty('dag {
+bb="0,0,1,1"
+"FWMT compliant" [pos="0.492,0.166"]
+"date of new moon" [pos="0.720,0.5"]
+"incubation temperature" [pos="0.5,0.578"]
+"management efforts" [pos="0.35,0.069"]
+"spawning habitat" [pos="0.400,0.234"]
+day [pos="0.63,0.2"]
+hour [pos="0.700,0.19"]
+n_fry [outcome,pos="0.541,0.42"]
+n_fry_sampled [pos="0.7,0.35"]
+n_spawners [pos="0.37,0.48"]
+"FWMT compliant" -> n_fry
+"date of new moon" -> n_fry_sampled
+"incubation temperature" -> n_fry
+"incubation temperature" -> n_fry_sampled
+"management efforts" -> "FWMT compliant"
+"management efforts" -> "spawning habitat"
+"spawning habitat" -> n_fry
+day -> n_fry_sampled
+hour -> n_fry_sampled
+n_fry -> n_fry_sampled
+n_spawners -> n_fry
+}
+')
+
+dag_df <- tidy_dagitty(dag) %>%
+  mutate(type = case_when(name %in% c("n_fry", "n_fry_sampled") ~ "outcome",
+                          name %in% c("incubation temperature", "date of new moon", "FWMT compliant", "spawning habitat", "n_spawners") ~ "predictors",
+                          name %in% c("day", "hour", "management efforts") ~ "covariates"))
+
+my_colors <- c(
+  "outcome" = "red",
+  "predictors" = "blue",
+  "covariates" = "grey"
+)
+
+# Plot
+ggdag(dag_df, text = FALSE, node = FALSE) +
+  geom_dag_text(aes(color = type), show.legend = FALSE) +
+  geom_point(aes(x = 1, y = 0.5, color = type), size = 1, show.legend = TRUE) + # invisible points ONLY for legend
+  scale_color_manual(
+    values = my_colors, name = "") +
+  coord_cartesian(xlim = c(0.3, 0.8))+
+  theme_dag()
+```
+
+<<!--We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.-->>
+
+### Spawner fry Beverton holt model
+\begin{equation} \label{spawner_fry_eq}
+\begin{aligned}
+\log N_y^{\text{fry}} &\sim \text{Normal}(\log \mu_y^{sf}, \sigma_{\text{proc}}^{sf})\\
+\mu_y^{sf} &= \frac{\alpha_y^{sf} \cdot N_y^{\text{spawners}}}{1 + \beta^{sf} \cdot N_y^{\text{spawners}}/10^5}\\
+\log \alpha_y^{sf} &= \alpha_0^{sf} + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y\\ 
+\beta^{sf} &\sim \text{Lognormal}(1, 1)\\
+\alpha_0^{sf} &\sim \text{Normal}(-3, 1)\\
+\beta^{\text{FWMT}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_{\text{proc}}^{sf} &\sim \text{Exponential}(1)\\
+\end{aligned}
+\end{equation}
+
+### Observation model for emergence data  
+\begin{equation} \label{emerge_obs_eq}
+\begin{aligned}
+N_i^{\text{fry}}{}_{\text{obs}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} - \frac{(h_i - h_i^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
+h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
+\mu_{h, y}^{\text{peak}} &\sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
+\mu_h^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_h^{\text{peak}} &\sim \text{Exponential}(10)\\
+\beta^{\text{soak}} &\sim \text{Exponential}(1) \\
+\beta^{\text{dusk}} &\sim \text{Normal}(0, 0.5) \\
+\phi^{\text{fry}} &\sim \text{Exponential}(1) \\
+\end{aligned}
+\end{equation}
+
+### Process model for fry abundance in year y in day d.  
 \begin{equation} \label{fry_abund_eq}
 \begin{aligned}
 \hat{N}_{y, d}^{\text{fry}} &= \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
@@ -510,32 +598,9 @@ d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} 
 \end{aligned}
 \end{equation}
 
-\begin{equation} \label{emerge_obs_eq}
-\begin{aligned}
-N_i^{\text{fry}}{}_{\text{obs}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} - \frac{(h_i - h_i^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
-h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
-\mu_{h, y}^{\text{peak}} &\sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
-\mu_h^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_h^{\text{peak}} &\sim \text{Exponential}(10)\\
-\beta^{\text{soak}} &\sim \text{Exponential}(1) \\
-\beta^{\text{dusk}} &\sim \text{Normal}(0, 0.5) \\
-\phi^{\text{fry}} &\sim \text{Exponential}(1) \\
-\end{aligned}
-\end{equation}
 
-\begin{equation} \label{spawner_fry_eq}
-\begin{aligned}
-\log N_y^{\text{fry}} &\sim \text{Normal}(\log \mu_y^{sf}, \sigma_{\text{proc}}^{sf})\\
-\mu_y^{sf} &= \frac{\alpha_y^{sf} \cdot N_y^{\text{spawners}}}{1 + \beta^{sf} \cdot N_y^{\text{spawners}}/10^5}\\
-\log \alpha_y^{sf} &= \alpha_0^{sf} + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y\\ 
-\beta^{sf} &\sim \text{Lognormal}(1, 1)\\
-\alpha_0^{sf} &\sim \text{Normal}(-3, 1)\\
-\beta^{\text{FWMT}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_{\text{proc}}^{sf} &\sim \text{Exponential}(1)\\
-\end{aligned}
-\end{equation}
+
+
 
 # Results
 
