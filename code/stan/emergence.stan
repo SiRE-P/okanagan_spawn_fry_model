@@ -40,6 +40,7 @@ parameters {
   vector<lower=1>[Y] spawners;
   
   real<lower=0> beta_sf;
+  real<lower=0> theta_sf;
   real alpha0; 
   real<lower=0> sigma_sf;
   vector[Y] total_fry_ln;
@@ -112,6 +113,7 @@ model {
   
   alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
   beta_sf ~ lognormal(beta_sf_prior, beta_sf_sigma_prior);
+  theta_sf ~ normal(1, 0.1);
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
@@ -120,7 +122,7 @@ model {
 
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + beta_sf * spawners[y]/1e05));
+    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e05)^theta_sf));
     total_fry_ln[y] ~ normal(fry_mu_ln, sigma_sf);
   }
   
