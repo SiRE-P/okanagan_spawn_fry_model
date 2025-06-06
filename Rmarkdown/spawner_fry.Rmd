@@ -408,7 +408,7 @@ FWMT_BH.df <- data.frame()
 for(j in 0:1){
   alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
   for(i in 1:length(spawnV)){
-    total_fry = (alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05) ^ post$gamma_sf)
+    total_fry = (alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
     #mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
     #total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
     FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
@@ -424,14 +424,14 @@ FWMT_BH_summary.df<- FWMT_BH.df %>%
             total_fry = median(total_fry))
 
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 0)
-mu_FWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$gamma_sf);
+mu_FWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
-mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$gamma_sf);
+mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * min(dat_list$ATU))
-mu_lowATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$gamma_sf);
+mu_lowATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * max(dat_list$ATU))
-mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$gamma_sf);
+mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU)
 
