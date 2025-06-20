@@ -22,11 +22,16 @@ data {
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[Y] ATU; //ATUs on day 100
   vector[N] dusk; //dusk on day of observation
-
+  
   int<lower=1> inc_days;
   array[Y, inc_days]  real<lower=0> incubation_flow;
-  real flow_threshold_prior_mu;
-  real<lower=0> flow_threshold_prior_sigma;
+  real scour_threshold_prior_mu;
+  real<lower=0> scour_threshold_prior_sigma;
+  
+  int freshet_days;
+  array[Y, freshet_days]  real<lower=0> freshet_flow;
+  real freshet_threshold_prior_mu;
+  real<lower=0> freshet_threshold_prior_sigma;
   
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
@@ -43,14 +48,19 @@ data {
 parameters {
   vector<lower=1>[Y] spawners;
   
-  real<lower=0> beta_sf;
+  real beta0;
   real<lower=0> theta_sf;
   real alpha0; 
   real<lower=0> sigma_sf;
   vector[Y] total_fry_ln;
   
-  real<lower=0> flow_threshold;  // estimated breakpoint
-  real a_flow_excess;
+  real<lower=0> scour_threshold;  // estimated breakpoint
+
+  real<lower=0> freshet_threshold;  // estimated breakpoint
+  real<lower=0> freshet_transition_slope; 
+  
+  real a_scour;
+  real b_freshet;
   real sf_ATU;
   
   real<lower=0> soak_b;
@@ -58,7 +68,7 @@ parameters {
   real b_ATU;
   real b_moonxATU;
   real b_dusk;
-
+  
   real hour_peak_mu;
   real hour_sd_mu;
   real day_peak_mu;
@@ -80,29 +90,40 @@ parameters {
 transformed parameters{
   
   //non-centered priors
-
+  
   vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
+  vector[Y] scour_count;
+  vector[Y] fresh_count;
   
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
-        b_moon * new_moon_date + 
-        b_ATU * ATU +
-        b_moonxATU * (new_moon_date .* ATU);
+  b_moon * new_moon_date + 
+  b_ATU * ATU +
+  b_moonxATU * (new_moon_date .* ATU);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
+  
+  
   
   //year specific alphas
   vector[Y] alpha_sf;
+  vector[Y] beta_sf;
   for (y in 1:Y) {
-    real cumulative_excess = 0;
+        scour_count[y] = 0;
+        fresh_count[y] = 0;
     for (d in 1:inc_days) {
-      cumulative_excess += fmax(0, incubation_flow[y, d] - flow_threshold);
+      scour_count[y] += fmax(0, incubation_flow[y, d] - scour_threshold);    
+    }
+    for (d in 1:freshet_days) {
+      fresh_count[y] += inv_logit(freshet_transition_slope * (freshet_flow[y, d] - freshet_threshold));    
     }
     
     alpha_sf[y] = exp(alpha0
-                      + a_flow_excess * cumulative_excess
-                      + sf_ATU * ATU[y]);
+    + a_scour * scour_count[y]/5 +
+    + sf_ATU * ATU[y]);
+    
+    beta_sf[y] = exp(beta0 + b_freshet * fresh_count[y]/30);
   }
   
   vector[Y] peak_fry;
@@ -122,18 +143,21 @@ model {
   //spawner fry beverton-holt
   
   alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
-  beta_sf ~ lognormal(beta_sf_prior, beta_sf_sigma_prior);
+  beta0 ~ normal(beta_sf_prior, beta_sf_sigma_prior);
   theta_sf ~ normal(1, 0.1);
   
-  flow_threshold ~ normal(flow_threshold_prior_mu, flow_threshold_prior_sigma);
-  a_flow_excess ~ normal(0, 0.5);
+  scour_threshold ~ normal(scour_threshold_prior_mu, scour_threshold_prior_sigma);
+  freshet_threshold ~ normal(freshet_threshold_prior_mu, freshet_threshold_prior_sigma);
+  freshet_transition_slope ~ lognormal(1.5, 0.6); // median ~4.5, 95% range ≈ [1.1, 18]
+  a_scour ~ normal(0, 0.5);
+  b_freshet ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
-
+  
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
-
+  
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e05)^theta_sf));
+    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf[y] * spawners[y]/1e05)^theta_sf));
     total_fry_ln[y] ~ normal(fry_mu_ln, sigma_sf);
   }
   
@@ -162,7 +186,7 @@ model {
   
   for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
-        b_dusk * dusk[i];
+    b_dusk * dusk[i];
     real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     fry_obs[i] ~ neg_binomial_2(emerge_mu, 1/emerg_obs_error);
@@ -171,7 +195,7 @@ model {
 generated quantities{
   vector[Y] log_lik;
   for (y in 1:Y) {
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e5)^theta_sf));
+    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf[y] * spawners[y]/1e5)^theta_sf));
     log_lik[y] = normal_lpdf(total_fry_ln[y] | fry_mu_ln, sigma_sf);
   }
 }
