@@ -22,8 +22,12 @@ data {
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[Y] ATU; //ATUs on day 100
   vector[N] dusk; //dusk on day of observation
-  int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
 
+  int<lower=1> inc_days;
+  array[Y, inc_days]  real<lower=0> incubation_flow;
+  real flow_threshold_prior_mu;
+  real<lower=0> flow_threshold_prior_sigma;
+  
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
   
@@ -45,7 +49,8 @@ parameters {
   real<lower=0> sigma_sf;
   vector[Y] total_fry_ln;
   
-  real a_FWMT;
+  real<lower=0> flow_threshold;  // estimated breakpoint
+  real a_flow_excess;
   real sf_ATU;
   
   real<lower=0> soak_b;
@@ -90,8 +95,13 @@ transformed parameters{
   //year specific alphas
   vector[Y] alpha_sf;
   for (y in 1:Y) {
+    real cumulative_excess = 0;
+    for (d in 1:inc_days) {
+      cumulative_excess += fmax(0, incubation_flow[y, d] - flow_threshold);
+    }
+    
     alpha_sf[y] = exp(alpha0
-                      + a_FWMT * exceeded_FWMT[y]
+                      + a_flow_excess * cumulative_excess
                       + sf_ATU * ATU[y]);
   }
   
@@ -115,7 +125,8 @@ model {
   beta_sf ~ lognormal(beta_sf_prior, beta_sf_sigma_prior);
   theta_sf ~ normal(1, 0.1);
   
-  a_FWMT ~ normal(0, 0.5);
+  flow_threshold ~ normal(flow_threshold_prior_mu, flow_threshold_prior_sigma);
+  a_flow_excess ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
 
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
