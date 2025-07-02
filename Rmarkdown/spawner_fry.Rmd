@@ -49,8 +49,12 @@ library(scales)
 library(dagitty)
 library(ggdag)
 
-library(rstan)
+library(cmdstanr)
 library(tidybayes)
+library(posterior)
+library(SiREfunctions)
+
+options(mc.cores = parallel::detectCores())
 
 theme_set(theme_bw())
 
@@ -188,10 +192,11 @@ flow <- read.csv("../../../data/okanagan_sockeye_data/data_clean/ok_river_mean_d
 
 flow %>% 
   filter(life_stage2 %in% c("incubation", "fry migration")) %>% 
+  filter(brood_year >= min(emergence$brood_year)) %>% 
   ggplot(aes(x = date, y = value))+
   geom_hline(yintercept = c(5, 28.3), lty = 2)+
   geom_point(size = 0.1)+
-  facet_wrap(~life_stage)+
+  facet_wrap(~life_stage2)+
   ylab("flow rate m3/s")+
   xlab("")+
   scale_color_discrete(guide = "none")+
@@ -264,57 +269,55 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
 init_year <- min(emergence_select$sample_year) - 1
 
 stan_file <- "../code/stan/emergence.stan"
-fit_file <- "../model_fits/emerge_m.RData"
-hash_file <- "../model_fits/emerge_m.md5"
+fit <- run_or_load_model(
+  model_name = "emerge_m",
+  stan_path = stan_file,
+  data_list = dat_list, 
+  cache_dir = "../model_fits",
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  seed = 123
+)
 
-# Compute current hash
-current_hash <- unname(tools::md5sum(stan_file))
+worst_Rhat <- fit$summary() %>%
+  as.data.frame() %>%
+  mutate(rhat = round(rhat, 3)) %>%
+  arrange(desc(rhat))
 
-# Check conditions and fit model if needed
-if(!file.exists(fit_file) || !file.exists(hash_file) || 
-   readLines(hash_file) != current_hash) {
-  
-  message("Compiling and fitting Stan model...")
-  emerge_m <- stan_model(file = stan_file)
-  fit <- sampling(emerge_m, data = dat_list, chains = 4, cores = 4)
-  
-  save(fit, emerge_m, file = fit_file)
-  writeLines(current_hash, hash_file)
-  
-} else {
-  message("Loading previously saved fit...")
-  load(fit_file)
-}
-
-worst_Rhat <- summary(fit)$summary %>% 
-  as.data.frame() %>% 
-  mutate(Rhat = round(Rhat, 3)) %>% 
-  arrange(desc(Rhat))
-
-worst_Rhat %>% 
-  filter(n_eff>3) %>% 
-  ggplot(aes(x = n_eff, y = Rhat))+
-  geom_point()+
-  geom_hline(yintercept = 1.01, lty = 2)+
+worst_Rhat %>%
+  filter(ess_bulk > 3) %>%
+  ggplot(aes(x = ess_bulk, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.01, lty = 2) +
   geom_vline(xintercept = 400, lty = 2)
 
-post <- extract(fit)
+post <- as_draws_df(fit$draws())
 ```
 
 ```{r fryemerge, echo=FALSE, message=FALSE, warning=FALSE}
 
-write.csv(data.frame(total_fry_ln = apply(post$total_fry_ln, 2, median), sd = apply(post$total_fry_ln, 2, sd), 
-                     brood_year = unique(emergence_select$brood_year),
-                     emergence_year = unique(emergence_select$sample_year)), 
-          file = "../outputs/fry_est.csv")
+total_fry_ln <- spread_draws(fit, total_fry_ln[year]) |> 
+  mutate(emergence_year = year + init_year) |> 
+  mutate(brood_year = emergence_year - 1) |>
+  group_by(brood_year, emergence_year) |> 
+  summarise(median = median(total_fry_ln), sd = sd(total_fry_ln))
+
+total_fry.df <- spread_draws(fit, total_fry_ln[year]) |> 
+  mutate(emergence_year = year + init_year) |> 
+  mutate(brood_year = emergence_year - 1) |>
+  group_by(brood_year, emergence_year) |> 
+  summarise(total_fry = median(exp(total_fry_ln)))
+
+# write.csv(total_fry_ln, 
+#           file = "../outputs/fry_est.csv")
 
 env_post <- env.df
-env_post$day_peak_median <- round(apply(post$day_peak* sd(emergence_select$yday) + mean(emergence_select$yday), 2, median))
-
-env_post$spawners <- apply(post$spawners, 2, median)
-
-
-library(geomtextpath)
+env_post <- left_join(env_post, spread_draws(fit, day_peak[year], spawners[year]) |> 
+  mutate(day_peak  = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday), 
+         year = year + init_year) |> 
+  group_by(year) |> 
+    summarise(spawners = median(spawners), day_peak = round(median(day_peak))))
 
 env_post <- left_join(env_post, spread_draws(fit, emerging_fry_ln[year, day]) %>% 
                         mutate(year = init_year + year) %>% 
@@ -345,10 +348,11 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
 
 
 
-p2 <- gather_draws(fit, b_ATU) %>%
-  bind_rows(gather_draws(fit, b_moon), 
-            gather_draws(fit, b_moonxATU),
-            gather_draws(fit, b_dusk)) %>% 
+p2 <- bind_rows(
+  gather_draws(fit, b_ATU),
+  gather_draws(fit, b_moon), 
+  gather_draws(fit, b_moonxATU),
+  gather_draws(fit, b_dusk)) %>% 
   mutate(.variable = case_when(.variable == "b_dusk" ~ "dusk", .variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
   mutate(.variable = factor(.variable, levels = c("dusk","moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
   ggplot(aes(x = .variable, y = .value))+
@@ -361,7 +365,7 @@ p2 <- gather_draws(fit, b_ATU) %>%
 p3 <- spread_draws(fit, day_peak[year]) %>% 
   mutate(year = init_year + year) %>%
   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-  left_join(env_post) %>% 
+  left_join(env_post |> select(-day_peak)) %>% 
   mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
   ggplot(aes(x = new_moon_yday, y = day_peak, color = year, group = year))+
   geom_abline(slope = 1, intercept = 0, lty = 2)+
@@ -381,7 +385,7 @@ p3 <- spread_draws(fit, day_peak[year]) %>%
 p4 <- spread_draws(fit, day_peak[year]) %>% 
   mutate(year = init_year + year) %>%
   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-  left_join(env_post) %>% 
+  left_join(env_post |> select(-day_peak)) %>% 
   ggplot(aes(x = ATU, y = day_peak, color = year, group = year))+
   stat_pointinterval(.width = CIs)+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
   scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none")+
@@ -435,7 +439,7 @@ mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$t
 
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU)
 
-env_post$fry_abund_predict <- apply(exp(post$total_fry_ln), 2, median)
+env_post$fry_abund_predict <- total_fry.df$total_fry
 
 p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
   geom_ribbon(aes(ymin = l95, ymax = u95), alpha =0.2, color = NA)+
