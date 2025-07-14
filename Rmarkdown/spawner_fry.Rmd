@@ -13,7 +13,7 @@ output:
       keep_tex: false
       mathjax: default
 csl: ../../../citation_resources/canadian-journal-of-fisheries-and-aquatic-sciences.csl
-bibliography: ../../../citation_resources/plt_library.bib
+bibliography: ../../../citation_resources/plt_library_new.bib
 always_allow_html: true
 link-citations: yes
 header-includes:
@@ -274,7 +274,8 @@ fit <- run_or_load_model(
   stan_path = stan_file,
   data_list = dat_list, 
   cache_dir = "../model_fits",
-  chains = 4,
+  chains = 4, 
+  threads_per_chain = 1,
   iter_sampling = 1000,
   iter_warmup = 1000,
   seed = 123
@@ -500,6 +501,14 @@ fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relatio
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))`--`r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
 
 # Introduction
+Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of their southern range in North America [@rand2012; @grant2019] highlighting the urgent need for management measures that can boost survival and contribute to maintenance and recovery. In this context, the Okanagan sockeye represent a rare success story where targeted management measures have proven effective, resulting in a twenty fold increase in spawner abundance since the early 2000s [@bailey2025]. However, because multiple management measures were implemented concurrently---habitat restoration, a hatchery restocking program, improved dam passage, managing dam outflows to ensure "fish-friendly flows"---and corresponded with changing environmental conditions, it has proven challenging to quantify the contribution of each intervention. Based on a weight of evidence approach, @alexander2024 concluded that these management interventions jointly contributed to the recovery, and amplified the positive effects of a 2007 shift towards more favourable coastal marine conditions. Still, quantitative estimates of how individual management interventions impact productivity and survival are needed in order to ensure that limited conservation resources are used effectively, and to assess whether similar intervention could support recovery in other salmon populations. 
+
+This study focuses on one of these interventions, the regulation of dam flows in the Okanagan river to maintain suitable conditions during egg incubation, reducing the risk of desiccation from low flows and scouring from high flows---a strategy made possible through the development and application of the Fish/Water Management Tool [FWMT\; @hyatt2015]. The implementation of the FWMT has resulted in fewer days during the incubation period where flows fell below or exceeded what is considered to be "fish-friendly" [@ng2025; @alexander2024]. However, quantifying the effect that these improved flows have had on egg survival and fry production remains challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior, but were not able to demonstrate a causal link between fry recruitment and interannual variation in flow rates.
+
+and this has corresponded with an increase in emerging fry per spawner [@ng2025] and fry in Osoyoos lake the following fall and winter [@alexander2024].
+
+that fry production [@ng2025] and 
+
 
 # Methods  
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
