@@ -1,29 +1,17 @@
-functions{
-  vector merge_missing(array[] int miss_indexes, vector x_obs, vector x_miss) {
-    int N = dims(x_obs)[1];
-    int N_miss = dims(x_miss)[1];
-    vector[N] merged;
-    merged = x_obs;
-    for(i in 1:N_miss)
-    merged[ miss_indexes[i] ] = x_miss[i];
-    return merged;
-  }
-}
-
 data {
   int<lower=0> Y; //years
   int<lower=0> N; //number of observations
   int<lower=0> D; //number of days to be modelled
-  int fry_obs[N]; //observed fry
+  array[N] int fry_obs; //observed fry
   vector[N] soak_time; //soak time in minutes
-  int year[N]; //year
+  array[N] int year; //year
   vector[N] hour; //hour set started - standardized 
-  int day[N]; //observation day index
+  array[N] int day; //observation day index
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[Y] ATU; //ATUs on day 100
   vector[N] dusk; //dusk on day of observation
-  int exceeded_FWMT[Y]; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
-
+  array[Y] int exceeded_FWMT; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
+  
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
   
@@ -53,7 +41,7 @@ parameters {
   real b_ATU;
   real b_moonxATU;
   real b_dusk;
-
+  
   real hour_peak_mu;
   real hour_sd_mu;
   real day_peak_mu;
@@ -75,24 +63,24 @@ parameters {
 transformed parameters{
   
   //non-centered priors
-
+  
   vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
   
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
-        b_moon * new_moon_date + 
-        b_ATU * ATU +
-        b_moonxATU * (new_moon_date .* ATU);
+  b_moon * new_moon_date + 
+  b_ATU * ATU +
+  b_moonxATU * (new_moon_date .* ATU);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
   
   //year specific alphas
   vector[Y] alpha_sf;
   for (y in 1:Y) {
     alpha_sf[y] = exp(alpha0
-                      + a_FWMT * exceeded_FWMT[y]
-                      + sf_ATU * ATU[y]);
+    + a_FWMT * exceeded_FWMT[y]
+    + sf_ATU * ATU[y]);
   }
   
   vector[Y] peak_fry;
@@ -117,9 +105,9 @@ model {
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
-
+  
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
-
+  
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
     real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e05)^theta_sf));
@@ -149,18 +137,21 @@ model {
   
   emerg_obs_error ~ exponential(1);
   
-  for(i in 1:N){
+    for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
-        b_dusk * dusk[i];
+    b_dusk * dusk[i];
     real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     fry_obs[i] ~ neg_binomial_2(emerge_mu, 1/emerg_obs_error);
   }
 }
+
 generated quantities{
-  vector[Y] log_lik;
-  for (y in 1:Y) {
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e5)^theta_sf));
-    log_lik[y] = normal_lpdf(total_fry_ln[y] | fry_mu_ln, sigma_sf);
+  vector[N] log_lik;
+  for(i in 1:N){
+    real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] + b_dusk * dusk[i];
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
+    real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
+    log_lik[i] = neg_binomial_2_lpmf(fry_obs[i] | emerge_mu, 1/emerg_obs_error);
   }
 }
