@@ -92,8 +92,9 @@ emergence <- emergence %>% left_join(new_moons %>% rename(sample_year = year))
 
 emergence_select <- emergence %>% select(date, brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric, volume_m3) %>% 
   mutate(date = as.Date(date)) %>% 
-  filter(time_set_numeric > 0) %>% 
-  filter(!is.na(total_catch))
+  filter(time_set_numeric >= 0, time_set_numeric<=5) %>% 
+  filter(!is.na(total_catch)) |> 
+  filter(soak_time_min >=5, soak_time_min<=20)
 ```
 
 
@@ -281,17 +282,17 @@ fit <- run_or_load_model(
   seed = 123
 )
 
-worst_Rhat <- fit$summary() %>%
-  as.data.frame() %>%
-  mutate(rhat = round(rhat, 3)) %>%
-  arrange(desc(rhat))
-
-worst_Rhat %>%
-  filter(ess_bulk > 3) %>%
-  ggplot(aes(x = ess_bulk, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.01, lty = 2) +
-  geom_vline(xintercept = 400, lty = 2)
+# worst_Rhat <- fit$summary() %>%
+#   as.data.frame() %>%
+#   mutate(rhat = round(rhat, 3)) %>%
+#   arrange(desc(rhat))
+# 
+# worst_Rhat %>%
+#   filter(ess_bulk > 3) %>%
+#   ggplot(aes(x = ess_bulk, y = rhat)) +
+#   geom_point() +
+#   geom_hline(yintercept = 1.01, lty = 2) +
+#   geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -505,12 +506,77 @@ Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of thei
 
 This study focuses on one of these interventions: the regulation of dam flows in the Okanagan River to maintain suitable conditions during egg incubation, reducing the risk of scouring from high flows and desiccation from low flows. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. During this period, high flows can scour the stream bed, potentially dislodging or burying eggs and alevin, while also increasing fine sediment infiltration, which in turn reduces oxygen supply [@devries1997; @ingram2011]. The degree to which scour reduces survival is assumed to be a sigmoidal function of the depth reached by scour, which increases with flow velocity [@glawdel2011]. Sockeye redds tend to be buried at depths between 10 and 25 cm below the stream bed [@devries1997] and survival is determined by the proportion of the eggs that are impacted by scour. Likewise, if flows are low enough to expose the eggs to air, mortality can occur through desiccation or freezing [@casas-mulet2015]. 
 
-While desiccation and scour occur naturally, they are directly influenced by dam-influenced flow regulation, as is the case in the Okanagan River. Because of this, the Okanagan Basin Implementation Board adopted target flows ($5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$) in 1976  [@okanaganbasinimplementationboard1982], but challenges associated with balancing flood mitigation as well as uncertainty in real-time conditions resulted in flows frequently exceeding or falling below this range [@ng2025]. To address this issue, the Fish/Water Management Tool (FWMT) was developed as a decision support tool that provides real-time predictions of the consequences of water management decisions for fish and other users [@hyatt2015]. Since its implementation in 2004, there have been fewer days during the incubation period where flows fell below or exceeded the target flow range [@ng2025; @alexander2024]. 
+While scouring flows during the incubation period can reduce survival, they may have beneficial effects if they occur at other times of year. Over time, fine sediments can accumulate in spawning habitat, filling the spaces between spawning gravels, and causing mortality by reducing dissolved oxygen and trapping emerging alevins [@moring1982]. High-velocity flows, such as those during freshet, can flush fine sediments from spawning gravel, and may be critical to maintaining productive spawning habitat [@reiser1989].
 
-It has been assumed that improved flow compliance has reduced scour and desiccation, and thus improved egg to fry survival; however, quantifying this benefit is challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior. Similarly, @alexander2024 found a two-fold increase in the ratio of pre-smolts (i.e., in-lake fry in the fall and winter following emergence) to spawners after brood year 2008 (four years post FWMT implementation). However, neither study was able to establish a causal link between fry recruitment and interannual variation in flow rates.
+While desiccation, scour, and sediment flushing occur naturally, they are directly influenced by dam-influenced flow regulation, as is the case in the Okanagan River. Because of this, the Okanagan Basin Implementation Board adopted seasonally varying target flows in 1976, to ensure that flow is suitable for each life stage of salmon in the river [@okanaganbasinimplementationboard1982], but challenges associated with balancing flood mitigation as well as uncertainty in real-time conditions resulted in flows frequently exceeding or falling below this range [@ng2025]. To address this issue, the Fish/Water Management Tool (FWMT) was developed as a decision support tool that provides real-time predictions of the consequences of water management decisions for fish and other users [@hyatt2015]. Since its implementation in 2004, there have been fewer days where flows fell below or exceeded the target flow range [@ng2025; @alexander2024]. 
+
+It has been assumed that improved flow compliance has reduced scour and desiccation, and thus improved egg to fry survival; however, quantifying this benefit is challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior. Similarly, @alexander2024 found a two-fold increase in the ratio of pre-smolts (i.e., in-lake fry in the fall and winter following emergence) to spawners after brood year 2008 (four years post FWMT implementation) and concluded that FWMT was a strong contributing factor to the sockeye recovery. However, despite this, neither study was able to establish a causal link between fry recruitment and interannual variation in flow rates.
+
+<!-- Add review of temperature effects Beacham et al. 1990-->
+
+Here we present a process-based Bayesian model that estimates how flow velocity and temperature, during and preceding the incubation period, influences spawner-to-fry production in the Okanagan River. This model allows us to test two hypotheses: 1) that higher pre-spawning flows improve spawner-to-fry production by flushing fine sediments, and 2) that high flows during incubation reduce production through scour-related mortality. While desiccation remains a potential concern, we were unable to estimate the effects of low flows, as flows remained above the assumed desiccation threshold during incubation in all but two years in our study period. By quantifying the benefits of managing for "fish-friendly" flows, this work supports the continued application of the FWMT and provides insight into how this approach could support the sustainable management of other salmon populations. 
 
 
-# Methods  
+# Methods 
+## Study system
+## Fry emergence sampling
+The ONA has conducted fry emergence surveys in March and April of each year since `r min(emergence_select$sample_year)` (note: Elizabeth's report says surveys started in 2001). Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
+
+Emerging fry are sampled using a fyke net (dimensions?) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
+
+## Estimating a metric of yearly fry abundance
+The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. This daily emergence is linked to the observed fry counts from the individual sets, while controlling for variation in soak time, flow rate, sampling date, and time of day. To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. Within each day, we assume that fry emergence follows a second normal distribution, peaking in the evening. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
+
+$$\hat{N}_{y,d,h}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}}} \cdot 
+\exp\left( 
+- \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} 
+- \frac{(h - h_{y,d}^{\text{peak}})^2}{2(h_y^{\text{sd}})^2} 
+\right),$$
+
+
+where $\hat{N}_{y,d,h}^{\text{fry}}$ is fry abundance in year $y$ on day $d$ at hour $h$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years, and $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). The parameters $d_y^{\text{peak}}$ and $h_y^{\text{peak}}$ represent the peak day and hour of emergence, respectively, while $d_y^{\text{sd}}$ and $h_y^{\text{sd}}$ represent the spread of emergence across days and hours.
+
+The timing of emergence has been shown to depend on the cumulative exposure of the eggs to temperature [@beacham1990]. In addition, Syilx traditional knowledge indicates that fry emergence is timed with the new moon---when moonlight is minimal---to reduce predation risk from visually oriented predators. It is therefore plausible that the effect of accumulated thermal units (ATU) and the date of the new moon may interactively influence emergence, such that fry may track the new moon date, but only when sufficient development has occurred. Thus, we modelled the annual timing of peak emergence, $d_y^{\text{peak}}$, as a normal distribution with a mean that varies by year according to standardized ($\mu$ = 0, $\sigma$ = 1) accumulated thermal units ($\text{ATU}_y$) and the date of the new moon ($\text{moon}_y$), defined as the first new moon following April 6, to align with the typical emergence period. This model includes a multiyear intercept $\mu_d^{\text{peak}}$ and a standard deviation $\sigma_d^{\text{peak}}$, which give it hierarchical structure across years: 
+
+$$d_y^{\text{peak}} \sim \text{Normal}(\mu_d^{\text{peak}} + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta_d^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU x moon}} \cdot (\text{ATU}_y \cdot \text{moon}_y), \sigma_d^{\text{peak}}).$$
+
+The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date. We used weakly regularizing, non-informative priors for $\mu_d^{\text{peak}}$, $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, and $\beta_d^{\text{ATU x moon}}$, each specified as $\text{Normal}(0, 0.5)$. The standard deviation parameter $\sigma_d^{\text{peak}}$ was assigned an $\text{Exponential}(1)$ prior to regularize interannual variation in peak emergence timing. 
+
+Observations from the survey crew suggest that emergence timing within each day may be linked to the timing of dusk. Thus, we modelled daily peak emergence, $h_{y,d}^{\text{peak}}$, as a normal distribution with a mean that varies with the timing of dusk $\text{dusk}_{y,d}$, along with as on a hierarchical multiyear mean $\mu_{h}^{\text{peak}}$ and standard deviation, $\sigma_{h}^{\text{peak}}$:
+
+$$h_{y,d}^{\text{peak}} \sim \text{Normal}(\mu_{h}^{\text{peak}} + \beta_{h}^{\text{dusk}} \cdot \text{dusk}_{y,d}, \sigma_{h}^{\text{peak}}).$$
+We set the prior for $\mu_{h}^{\text{peak}}$ as $\text{Normal}(0, 0.5)$ to reflect the expectation that emergence peaks midway through the nightly sampling window. We used an $\text{Exponential}(10)$ for $\sigma_{h}^{\text{peak}}$, reflecting our expectation that nightly emergence timing not explained by dusk is likely small.
+
+
+We modelled $d_y^{\text{sd}}$ and $h_y^{\text{sd}}$ hierarchically on a log scale (to enforce positivity), with yearly values drawn from a normal distribution defined by a multiyear mean and standard deviation. We set the priors for the the multiyear means to be $\text{Normal}(-0.5, 0.5)$ to reflect our expectation that the spread of emergence across both days and hours is relatively narrow. We set the priors for the standard deviations of the year-specific effects as $\text{Exponential}(10)$ as a weakly regularizing prior of variation on a log scale. 
+
+
+
+### Process model for fry abundance in year y in day d.  
+\begin{equation} \label{fry_abund_eq}
+\begin{aligned}
+\hat{N}_{y, d}^{\text{fry}} &= \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
+\log \hat{N}_y^{\text{fry}}{}_{\text{max}} &= \log N_y^{\text{fry}} - \log( 2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}} )\\
+d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta^{\text{moonxATU}} \cdot (\text{moon}_y \cdot \text{ATU}_y), \sigma_d^{\text{peak}})\\
+\mu_d^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
+\sigma_d^{\text{peak}} &\sim \text{Exponential}(1)\\
+\log d_y^{\text{sd}} &\sim \text{Normal}(\mu_d^{\text{sd}}, \sigma_d^{\text{sd}})\\
+\mu_d^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
+\sigma_d^{\text{sd}} &\sim \text{Exponential}(1)\\
+\log h^{\text{sd}}_y &\sim \text{Normal}(\mu_h^{\text{sd}}, \sigma_h^{\text{sd}})\\
+\mu_h^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
+\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
+\beta^{\text{moon}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
+\beta^{\text{moonxATU}} &\sim \text{Normal}(0, 0.5)\\
+\end{aligned}
+\end{equation}
+
+## Estimating factors influencing spawner to fry production
+
+<!-- Overview of system and data collection -->
+
+<!-- switch to map that includes vertical drop structures -->
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
 ```
@@ -547,13 +613,13 @@ n_spawners -> n_fry
 
 dag_df <- tidy_dagitty(dag) %>%
   mutate(type = case_when(name %in% c("n_fry", "n_fry_sampled") ~ "outcome",
-                          name %in% c("incubation temperature", "date of new moon", "FWMT compliant", "spawning habitat", "n_spawners") ~ "predictors",
-                          name %in% c("day", "hour", "volume sampled", "time sampled") ~ "covariates"))
+                          name %in% c("incubation temperature", "date of new moon", "FWMT compliant", "spawning habitat", "n_spawners") ~ "explanatory variable",
+                          name %in% c("day", "hour", "volume sampled", "time sampled") ~ "adjustment variable"))
 
 my_colors <- c(
   "outcome" = "red",
-  "predictors" = "blue",
-  "covariates" = "grey"
+  "explanatory variable" = "blue",
+  "adjustment variable" = "grey"
 )
 
 # Plot
@@ -566,7 +632,7 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
   theme_dag()
 ```
 
-<<!--We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.-->>
+<!--We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.-->
 
 ### Spawner fry Beverton holt model
 \begin{equation} \label{spawner_fry_eq}
@@ -598,25 +664,7 @@ h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \tex
 \end{aligned}
 \end{equation}
 
-### Process model for fry abundance in year y in day d.  
-\begin{equation} \label{fry_abund_eq}
-\begin{aligned}
-\hat{N}_{y, d}^{\text{fry}} &= \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
-\log \hat{N}_y^{\text{fry}}{}_{\text{max}} &= \log N_y^{\text{fry}} - \log( 2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}} )\\
-d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta^{\text{moonxATU}} \cdot (\text{moon}_y \cdot \text{ATU}_y), \sigma_d^{\text{peak}})\\
-\mu_d^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_d^{\text{peak}} &\sim \text{Exponential}(1)\\
-\log d_y^{\text{sd}} &\sim \text{Normal}(\mu_d^{\text{sd}}, \sigma_d^{\text{sd}})\\
-\mu_d^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
-\sigma_d^{\text{sd}} &\sim \text{Exponential}(1)\\
-\log h^{\text{sd}}_y &\sim \text{Normal}(\mu_h^{\text{sd}}, \sigma_h^{\text{sd}})\\
-\mu_h^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
-\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
-\beta^{\text{moon}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{moonxATU}} &\sim \text{Normal}(0, 0.5)\\
-\end{aligned}
-\end{equation}
+
 
 
 
