@@ -48,6 +48,7 @@ library(ggrepel)
 library(scales)
 library(dagitty)
 library(ggdag)
+library(ggnewscale)
 
 library(cmdstanr)
 library(tidybayes)
@@ -229,7 +230,6 @@ env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubati
 ```
 
 ```{r spawners, include = FALSE}
-#load CNAT spawners
 spawners <- read.csv("../outputs/spawners_est.csv") %>% 
   select(-X) %>% 
   mutate(fry_year = year + 1)
@@ -237,6 +237,37 @@ spawners <- read.csv("../outputs/spawners_est.csv") %>%
 env.df <- env.df %>% 
   left_join(spawners %>% select(spawners_ln_est = spawners_ln, spawner_ln_sd = sd, fry_year), by = c("year" = "fry_year")) %>% 
   mutate(brood_year = year-1)
+```
+
+```{r thermal_barrier, include = FALSE}
+thermal_barrier <- read.csv("../../Ok_sock_lifecycle_model/outputs/thermal_barrier.csv") %>% 
+  select(-X) %>% 
+  mutate(fry_year = year + 1) |> 
+  mutate(onset_md = format(as.Date(as.Date(onset - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%b %d"))
+
+therm_mod <- lm(duration ~ onset, data = thermal_barrier)
+thermal_barrier$duration_resid <- thermal_barrier$duration - predict(therm_mod)
+
+ggplot(thermal_barrier |> mutate(onset = as.Date(onset - 1, origin = "2020-01-01")), aes(x = year, y = onset))+
+  geom_line()+
+  geom_point()+
+  labs(x = "", y = "Thermal barrier onset")+
+
+ggplot(thermal_barrier, aes(x = year, y = duration))+
+  geom_line()+
+  geom_point()+
+  labs(x = "", y = "Thermal barrier duration (days)")+
+  
+  ggplot(thermal_barrier |> mutate(onset = as.Date(onset - 1, origin = "2020-01-01")), aes(x = onset, y = duration))+
+  geom_point()+
+  geom_text_repel(aes(label = year)) +
+  labs(x = "Thermal barrier onset",  y = "Thermal barrier duration (days)",)+
+  
+  plot_annotation(tag_levels = "A")
+
+
+env.df <- env.df %>% 
+  left_join(thermal_barrier |> select(-year), by = c("year" = "fry_year"))
 ```
 
 ```{r stan, include = FALSE}
@@ -260,6 +291,11 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  spawner_ln_est = env.df$spawners_ln_est,
                  spawner_ln_sd = env.df$spawner_ln_sd,
                  
+                 N_missing_thermal = sum(is.na(env.df$onset)),
+                 thermal_missidx = which(is.na(env.df$onset)),
+                 thermal_onset = ifelse(!is.na(env.df$onset), stand(env.df$onset), -999),
+                 thermal_dur_resid = ifelse(!is.na(env.df$duration_resid), env.df$duration_resid/sd(env.df$duration_resid, na.rm = TRUE), -999),
+                 
                  sigma_sf_prior = 1,
                  beta_sf_prior = 1,
                  alpha_sf_prior = -3,
@@ -282,17 +318,17 @@ fit <- run_or_load_model(
   seed = 123
 )
 
-# worst_Rhat <- fit$summary() %>%
-#   as.data.frame() %>%
-#   mutate(rhat = round(rhat, 3)) %>%
-#   arrange(desc(rhat))
-# 
-# worst_Rhat %>%
-#   filter(ess_bulk > 3) %>%
-#   ggplot(aes(x = ess_bulk, y = rhat)) +
-#   geom_point() +
-#   geom_hline(yintercept = 1.01, lty = 2) +
-#   geom_vline(xintercept = 400, lty = 2)
+worst_Rhat <- fit$summary() %>%
+  as.data.frame() %>%
+  mutate(rhat = round(rhat, 3)) %>%
+  arrange(desc(rhat))
+
+worst_Rhat %>%
+  filter(ess_bulk > 3) %>%
+  ggplot(aes(x = ess_bulk, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.01, lty = 2) +
+  geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -341,7 +377,7 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   xlab("")+
   ylab("# of emerging fry (relative abund.)")+
   scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D")+
-  scale_y_continuous(limits = c(0, 550), expand = c(0, 0))+
+  scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
   theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
   scale_x_continuous(
     name = "",
@@ -412,17 +448,33 @@ spawnV <- seq(0, exp(max(env.df$spawners_ln_est, na.rm = TRUE)), length = 30)
 
 FWMT_BH.df <- data.frame()
 for(j in 0:1){
-  alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
+  for(k in 1:2){
+    onset <- quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], probs = c(0.15, 0.85))[k]
+  alpha_sf <- exp(post$alpha0 + post$a_FWMT * j + post$b_therm_onset * onset)
   for(i in 1:length(spawnV)){
     total_fry = (alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
-    #mu = log((alpha_sf * spawnV[i])/(1 + post$beta_sf * spawnV[i]/1e05));
-    #total_fry <-exp(rnorm(length(post$beta_sf), mu, post$sigma_sf))
-    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], total_fry = total_fry, draw = 1:length(post$beta_sf)))
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$beta_sf)))
+  }
   }
 }
 
 FWMT_BH_summary.df<- FWMT_BH.df %>% 
-  group_by(spawners, FWMT_range) %>% 
+  group_by(spawners, FWMT_range, onset) %>% 
+  summarise(l95 = quantile(total_fry, probs = 0.025), 
+            u95 = quantile(total_fry, probs = 0.975),
+            l66 = quantile(total_fry, probs = 0.165), 
+            u66 = quantile(total_fry, probs = 0.835),
+            total_fry = median(total_fry)) |> 
+  mutate(onset = as.Date(onset - 1, origin = "2020-01-01"))
+
+fry_summary <- spread_draws(fit, total_fry_ln[year]) %>% 
+  mutate(year = init_year + year) %>% 
+  left_join(env_post %>% 
+              mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")) %>% 
+              select(year, FWMT_range, spawners, onset)) |> 
+  mutate(onset = as.Date(onset - 1, origin = "2020-01-01")) |> 
+  mutate(total_fry = exp(total_fry_ln)) |> 
+  group_by(spawners, FWMT_range, year, onset) |> 
   summarise(l95 = quantile(total_fry, probs = 0.025), 
             u95 = quantile(total_fry, probs = 0.975),
             l66 = quantile(total_fry, probs = 0.165), 
@@ -439,64 +491,100 @@ mu_lowATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$th
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * max(dat_list$ATU))
 mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
-fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU)
+alpha_sf <- exp(post$alpha0 + post$b_therm_onset * min(dat_list$thermal_onset[-dat_list$thermal_missidx]))
+mu_early_onset <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+alpha_sf <- exp(post$alpha0 + post$b_therm_onset * max(dat_list$thermal_onset[-dat_list$thermal_missidx]))
+mu_late_onset <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+
+alpha_sf <- exp(post$alpha0 + post$b_therm_dur * min(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
+mu_short_dur <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+alpha_sf <- exp(post$alpha0 + post$b_therm_dur * max(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
+mu_long_dur <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+
+fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
+                                 FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, 
+                                 ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU, 
+                                 onset = 100 * (mu_early_onset - mu_late_onset)/mu_late_onset, 
+                                 duration = 100 * (mu_long_dur - mu_short_dur)/mu_short_dur)
+
+fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
+                                 FWMT = mu_noFWMT/mu_FWMT, 
+                                 ATU = mu_highATU/mu_lowATU, 
+                                 onset = mu_early_onset/mu_late_onset, 
+                                 duration = mu_long_dur/mu_short_dur)
 
 env_post$fry_abund_predict <- total_fry.df$total_fry
 
-p1 <- ggplot(FWMT_BH_summary.df, aes(x = spawners, y = total_fry, color = FWMT_range, fill = FWMT_range, group = FWMT_range))+
-  geom_ribbon(aes(ymin = l95, ymax = u95), alpha =0.2, color = NA)+
-  geom_line()+
-  geom_point(data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")), aes(y = fry_abund_predict))+
-  stat_pointinterval(data = spread_draws(fit, total_fry_ln[year]) %>% 
-                       mutate(year = init_year + year) %>% 
-                       left_join(env_post %>% 
-                                   mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")) %>% 
-                                   select(year, FWMT_range, spawners)) %>% 
-                       mutate(total_fry = exp(total_fry_ln)), 
-                     .width = CIs)+
-  geom_text_repel(
+p1 <- FWMT_BH_summary.df |> 
+  filter(spawners>0) |> 
+  ggplot(aes(x = spawners, y = total_fry, group = interaction(onset, FWMT_range)))+
+  #geom_ribbon(aes(ymin = l66, ymax = u66, fill = onset), alpha =0.2, color = NA)+
+  geom_line(size = 1, aes(linetype = FWMT_range, color = onset))+
+  geom_errorbar(data = fry_summary, aes(ymin = l95, ymax = u95), width = 0, size = 0.7)+
+  geom_errorbar(data = fry_summary, aes(ymin = l66, ymax = u66), width = 0, size = 1.5)+
+  geom_point(data = fry_summary, size = 4, aes(color = onset), pch =  19)+
+  scale_color_viridis_c(option = "C", direction = -1, begin = 0.1, end = 0.9,
+                        labels = function(x) format(as.Date(x, origin = "1970-01-01"), "%b %d"),
+                        limits = range(fry_summary$onset), name = "Thermal\nbarrier\nonset"
+  )+
+  # scale_fill_viridis_c(option = "C", direction = -1, begin = 0.1, end = 0.9,
+  #                      labels = function(x) format(as.Date(x, origin = "1970-01-01"), "%b %d"),
+  #                      limits = range(fry_summary$onset), name = "Thermal\nbarrier\nonset"
+  # )+
+  new_scale_color() +
+    geom_text_repel(
     data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")),
-    aes(y = fry_abund_predict, label = brood_year),
-    nudge_x = -10000,           # consistent rightward offset
+    aes(x = spawners, y = fry_abund_predict, label = brood_year, color = FWMT_range),
+    nudge_x = -0.1,           # consistent rightward offset
     direction = "y",           # only allow vertical movement
     box.padding = 0.2,         # optional fine-tuning
     min.segment.length = 0,    # ensures connecting lines are drawn
     segment.alpha = 0.5,
     size = 3,
-    show.legend = FALSE
-  )+
-  scale_color_manual(values = c("red", "black"), "FWMT range")+
-  scale_fill_manual(values = c("red", "black"), "FWMT range")+
-  ylab("Fry abundance (relative)")+
-  theme(legend.position = c(0.05, 0.95), legend.justification = c(0, 1))+
-  scale_x_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Spawner abundance (thousands)")
+    show.legend = TRUE, inherit.aes = FALSE)+
+  scale_color_manual(values = c("red", "dodgerblue2"), name = "FWMT range", guide = guide_legend(override.aes = list(size = 4)))+
+  scale_linetype_manual(values = c(3,1), name = "FWMT range" , guide = guide_legend(override.aes = list(size = 0.1)))+
+  scale_x_log10(labels = label_number(scale = 1e-3, suffix = "k"), name = "Spawner abundance (thousands)")+
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")
 
-p3 <- fry_percent_change %>%
-  gather(key = variable, value = percent_change, -draw) %>% 
-  ggplot(aes(x = variable, y = percent_change))+
-  geom_hline(yintercept = 0, lty = 2)+
+
+p3 <- fry_ratios %>%
+  rename("High vs. low ATUs" = "ATU",
+         "FWMT exceeded" = "FWMT",
+        "early vs. late thermal barrier" =  "onset",
+         "residual thermal barrier duration" = "duration") |> 
+  gather(key = variable, value = ratio, -draw) %>% 
+  mutate(variable = factor(variable, levels = unique(variable)[c(3,4,1,2)])) |> 
+  ggplot(aes(x = variable, y = ratio))+
+  geom_hline(yintercept = 1, lty = 2)+
   stat_pointinterval(.width = CIs)+
-  ylab("% change in fry production")+
+  ylab("Proportional change in fry production")+
   xlab("")+
-  scale_x_discrete(labels = c(
-    "ATU" = "High\nATUs",
-    "FWMT" = "FWMT\ncompliant"
-  ))
+  scale_x_discrete(labels = label_wrap(10))+
+  scale_y_log10()
 
-# p2 <-  gather_draws(fit, sf_ATU) %>%
-#   bind_rows(gather_draws(fit, a_FWMT), 
-#             gather_draws(fit, a_testalinden)) %>% 
-#   ggplot(aes(x = .variable, y = .value))+
-#   geom_hline(yintercept = 0, lty = 2)+
-#   stat_pointinterval(.width = CIs)+
-#   ylab("estimate")+
-#   xlab("")
+thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), max(dat_list$thermal_onset), length = 30)
+thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), max(env.df$onset, na.rm = TRUE), length = 30)
 
-fig_spawn_fry <- p1 + p3 + 
-  plot_layout(widths = c(1, 0.4)) + 
+thermal_onset.df <- data.frame()
+for(i in 1:30){
+alpha_sf <- exp(post$alpha0 + post$b_therm_onset * thermal_onsetV_scaled[i])
+hold <-(alpha_sf * exp(median(dat_list$spawner_ln_est)))/(1 + post$beta_sf * (exp(median(dat_list$spawner_ln_est))/1e05)^ post$theta_sf)
+thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold))
+}
+
+p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = fry))+
+  stat_lineribbon()+
+  labs(x = "Date of thermal barrier onset")+
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")+
+  scale_fill_brewer(palette = "Greys", guide = "none")
+
+fig_spawn_fry <- p1 / (p0 + p3) + 
+  plot_layout(height = c(1,0.8), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Estimated spawner to emerging fry abundance relationship (A) comparing scenarios where flows are maintained within the FWMT range (5–28.5 m\u00B3/s; black), or not (red), for the entire incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the estimated percent change in fry due to maintaining flows within the FWMT range, and between the highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed accumulated thermal units during the incubation period. The lines and shaded areas in panel A show the median and the 95% credible intervals of the mean spawner–fry relationships under each flow scenario, assuming average ATUs. Points and error bars in both panels show the posterior medians with 66% and 95% credible intervals for year-specific estimates (A) and effect sizes (B). Year is spawning year/brood year.")
+fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier. The lines contrast an early (Jun 27; yellow) and late (Jul 22; purple) thermal barrier scenarios, with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated proportional change (log axis) in fry production due to earliest (",thermal_barrier$onset_md[which(thermal_barrier$onset == min(thermal_barrier$onset))]
+,") vs. latest (",thermal_barrier$onset_md[which(thermal_barrier$onset == max(thermal_barrier$onset))],") thermal barrier onset, longest vs. shortest residual duration, FWMT exceeded vs. maintained, and highest (", round(max(env.df$ATU)), "°C·d) vs. lowest (",round(min(env.df$ATU)),"°C·d) observed ATUs during the incubation period. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))`--`r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
@@ -678,7 +766,7 @@ h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \tex
 fig_fry_emerge
 ```
 
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=5, fig.cap=fig_spawn_fry_cap}
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=10, fig.cap=fig_spawn_fry_cap}
 fig_spawn_fry
 ```
 

@@ -1,3 +1,15 @@
+functions{
+  vector merge_missing(array[] int miss_indexes, vector x_obs, vector x_miss) {
+    int N = dims(x_obs)[1];
+    int N_miss = dims(x_miss)[1];
+    vector[N] merged;
+    merged = x_obs;
+    for(i in 1:N_miss)
+    merged[ miss_indexes[i] ] = x_miss[i];
+    return merged;
+  }
+}
+
 data {
   int<lower=0> Y; //years
   int<lower=0> N; //number of observations
@@ -14,6 +26,11 @@ data {
   
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
+  
+  int N_missing_thermal;
+  array[N_missing_thermal] int thermal_missidx;
+  vector[Y] thermal_onset;
+  vector[Y] thermal_dur_resid;
   
   vector[D] day_std; //sequence of all days to be predicted
   
@@ -35,6 +52,11 @@ parameters {
   
   real a_FWMT;
   real sf_ATU;
+  // real sf_therm_bar;
+  
+  // real a_therm_onset;
+  real b_therm_onset;
+  real b_therm_dur;
   
   real<lower=0> soak_b;
   real b_moon;
@@ -59,11 +81,20 @@ parameters {
   
   real<lower=0> emerg_obs_error;
   
+  //missing data
+  vector[N_missing_thermal] thermal_onset_impute;
+  vector[N_missing_thermal] thermal_dur_resid_impute;
 }
 transformed parameters{
+  //missing variables
+  vector[Y] thermal_onset_merge;
+  thermal_onset_merge = merge_missing(thermal_missidx, to_vector(thermal_onset), thermal_onset_impute);
+
+  vector[Y] thermal_dur_resid_merge;
+  thermal_dur_resid_merge = merge_missing(thermal_missidx, to_vector(thermal_dur_resid), thermal_dur_resid_impute);
+  
   
   //non-centered priors
-  
   vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
@@ -75,12 +106,20 @@ transformed parameters{
   b_moonxATU * (new_moon_date .* ATU);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
   
+  //thermal barrier effect
+  // vector[Y] therm_bar;
+  // for(y in 1:Y){
+  // therm_bar[y] = inv_logit(a_therm_onset + b_therm_onset * thermal_onset_merge[y]) * exp(b_therm_dur * thermal_dur_resid_merge[y]);
+  // }
+  
   //year specific alphas
   vector[Y] alpha_sf;
   for (y in 1:Y) {
     alpha_sf[y] = exp(alpha0
     + a_FWMT * exceeded_FWMT[y]
-    + sf_ATU * ATU[y]);
+    + sf_ATU * ATU[y]
+    + b_therm_onset * thermal_onset_merge[y]
+    + b_therm_dur * thermal_dur_resid_merge[y]);
   }
   
   vector[Y] peak_fry;
@@ -105,8 +144,17 @@ model {
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
+  // sf_therm_bar ~ normal(0, 0.5);
+  
+  // a_therm_onset ~ normal(0, 1);
+  b_therm_dur ~ normal(0, 0.5);
+  b_therm_onset ~ normal(0, 0.5);
   
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
+  
+  thermal_dur_resid_impute ~  std_normal();
+  thermal_onset_impute ~ std_normal();
+
   
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
@@ -137,7 +185,7 @@ model {
   
   emerg_obs_error ~ exponential(1);
   
-    for(i in 1:N){
+  for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
     b_dusk * dusk[i];
     real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
