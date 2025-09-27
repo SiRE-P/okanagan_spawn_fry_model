@@ -1,9 +1,9 @@
 ---
 title: "Factors influencing spawner to fry productivity in Okanagan sockeye"
-author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca], Karilyn Alex$^2$, Athena Ogden$^3$, Howard Stiff$^3$, others...\n|\n|
+author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca], Howard Stiff$^2$, Athena Ogden$^2$, Karilyn Alex$^3$, others...\n|\n|
   $^1$Pacific Science Enterprise Centre, Fisheries and Oceans Canada, West Vancouver, B.C., Canada\n|
-  $^2$Okanagan Nation Alliance, Westbank, B.C., Canada\n|
-  $^3$Pacific Biological Station, Fisheries and Oceans Canada, Nanaimo, B.C., Canada\n"
+  $^2$Pacific Biological Station, Fisheries and Oceans Canada, Nanaimo, B.C., Canada\n|
+  $^3$Okanagan Nation Alliance, Westbank, B.C., Canada\n"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
     bookdown::pdf_document2:
@@ -318,17 +318,17 @@ fit <- run_or_load_model(
   seed = 123
 )
 
-worst_Rhat <- fit$summary() %>%
-  as.data.frame() %>%
-  mutate(rhat = round(rhat, 3)) %>%
-  arrange(desc(rhat))
-
-worst_Rhat %>%
-  filter(ess_bulk > 3) %>%
-  ggplot(aes(x = ess_bulk, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.01, lty = 2) +
-  geom_vline(xintercept = 400, lty = 2)
+# worst_Rhat <- fit$summary() %>%
+#   as.data.frame() %>%
+#   mutate(rhat = round(rhat, 3)) %>%
+#   arrange(desc(rhat))
+# 
+# worst_Rhat %>%
+#   filter(ess_bulk > 3) %>%
+#   ggplot(aes(x = ess_bulk, y = rhat)) +
+#   geom_point() +
+#   geom_hline(yintercept = 1.01, lty = 2) +
+#   geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -514,6 +514,9 @@ fry_ratios <- data.frame(draw = 1:length(mu_FWMT),
                                  duration = mu_long_dur/mu_short_dur)
 
 env_post$fry_abund_predict <- total_fry.df$total_fry
+env_post$onset_impute <- spread_draws(fit, thermal_onset_merge[y]) |> 
+  group_by(y) |> 
+  summarise(onset_impute = median(thermal_onset_merge)) |> pull(onset_impute)
 
 p1 <- FWMT_BH_summary.df |> 
   filter(spawners>0) |> 
@@ -576,7 +579,9 @@ thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onset
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = fry))+
   stat_lineribbon()+
   labs(x = "Date of thermal barrier onset")+
-  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")+
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)", )+
+  #scale_x_date(expand = c(0, 0))+
+  coord_cartesian(ylim = c(0, 4500), expand = FALSE)+
   scale_fill_brewer(palette = "Greys", guide = "none")
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
@@ -613,56 +618,43 @@ The ONA has conducted fry emergence surveys from March to May of each year since
 Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
 
 ## Estimating a metric of yearly fry abundance
-The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. This daily emergence is linked to the observed fry counts from the individual sets, while controlling for variation in soak time, flow rate, sampling date, and time of day. To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. Within each day, we assume that fry emergence follows a second normal distribution, peaking in the evening. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
+The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
 
-$$\hat{N}_{y,d,h}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}}} \cdot 
-\exp\left( 
-- \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} 
-- \frac{(h - h_{y,d}^{\text{peak}})^2}{2(h_y^{\text{sd}})^2} 
+To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
+
+$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\, d_y^{\text{sd}}} \cdot 
+\exp\!\left(
+- \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2}
 \right),$$
 
 
-where $\hat{N}_{y,d,h}^{\text{fry}}$ is fry abundance in year $y$ on day $d$ at hour $h$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years, and $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). The parameters $d_y^{\text{peak}}$ and $h_y^{\text{peak}}$ represent the peak day and hour of emergence, respectively, while $d_y^{\text{sd}}$ and $h_y^{\text{sd}}$ represent the spread of emergence across days and hours.
+where $\hat{N}_{y,d}^{\text{fry}}$ is expected fry abundance in year $y$ on day $d$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years. The parameter $d_y^{\text{peak}}$ represents the peak day of emergence and $d_y^{\text{sd}}$ represents the spread of emergence across days.
 
 The timing of emergence has been shown to depend on the cumulative exposure of the eggs to temperature [@beacham1990]. In addition, Syilx traditional knowledge indicates that fry emergence is timed with the new moon---when moonlight is minimal---to reduce predation risk from visually oriented predators. It is therefore plausible that the effect of accumulated thermal units (ATU) and the date of the new moon may interactively influence emergence, such that fry may track the new moon date, but only when sufficient development has occurred. Thus, we modelled the annual timing of peak emergence, $d_y^{\text{peak}}$, as a normal distribution with a mean that varies by year according to standardized ($\mu$ = 0, $\sigma$ = 1) accumulated thermal units ($\text{ATU}_y$) and the date of the new moon ($\text{moon}_y$), defined as the first new moon following April 6, to align with the typical emergence period. This model includes a multiyear intercept $\mu_d^{\text{peak}}$ and a standard deviation $\sigma_d^{\text{peak}}$, which give it hierarchical structure across years: 
 
 $$d_y^{\text{peak}} \sim \text{Normal}(\mu_d^{\text{peak}} + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta_d^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU x moon}} \cdot (\text{ATU}_y \cdot \text{moon}_y), \sigma_d^{\text{peak}}).$$
 
-The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date. We used weakly regularizing, non-informative priors for $\mu_d^{\text{peak}}$, $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, and $\beta_d^{\text{ATU x moon}}$, each specified as $\text{Normal}(0, 0.5)$. The standard deviation parameter $\sigma_d^{\text{peak}}$ was assigned an $\text{Exponential}(1)$ prior to regularize interannual variation in peak emergence timing. 
+The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date.
 
-Observations from the survey crew suggest that emergence timing within each day may be linked to the timing of dusk. Thus, we modelled daily peak emergence, $h_{y,d}^{\text{peak}}$, as a normal distribution with a mean that varies with the timing of dusk $\text{dusk}_{y,d}$, along with as on a hierarchical multiyear mean $\mu_{h}^{\text{peak}}$ and standard deviation, $\sigma_{h}^{\text{peak}}$:
+We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for soak time and for the hourly emergence curve:
+
+\begin{align*}
+N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i - \frac{(h_i - h_{y_i,d_i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
+\end{align*}
+
+where $\beta^{\text{soak}}$ is the rate at which fry abundance increases with soak time $t^{\text{soak}}_i$, $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). 
+
+Observations from the survey crew suggest that emergence timing within each day may be linked to the timing of dusk. Thus, we modelled daily peak emergence, $h_{y,d}^{\text{peak}}$, as a normal distribution with a mean that varies with the timing of dusk $\text{dusk}_{y,d}$, along with a hierarchical multiyear mean $\mu_{h}^{\text{peak}}$ and standard deviation, $\sigma_{h}^{\text{peak}}$:
 
 $$h_{y,d}^{\text{peak}} \sim \text{Normal}(\mu_{h}^{\text{peak}} + \beta_{h}^{\text{dusk}} \cdot \text{dusk}_{y,d}, \sigma_{h}^{\text{peak}}).$$
-We set the prior for $\mu_{h}^{\text{peak}}$ as $\text{Normal}(0, 0.5)$ to reflect the expectation that emergence peaks midway through the nightly sampling window. We used an $\text{Exponential}(10)$ for $\sigma_{h}^{\text{peak}}$, reflecting our expectation that nightly emergence timing not explained by dusk is likely small.
 
 
-We modelled $d_y^{\text{sd}}$ and $h_y^{\text{sd}}$ hierarchically on a log scale (to enforce positivity), with yearly values drawn from a normal distribution defined by a multiyear mean and standard deviation. We set the priors for the the multiyear means to be $\text{Normal}(-0.5, 0.5)$ to reflect our expectation that the spread of emergence across both days and hours is relatively narrow. We set the priors for the standard deviations of the year-specific effects as $\text{Exponential}(10)$ as a weakly regularizing prior of variation on a log scale. 
+We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$, $\beta_{h}^{\text{dusk}}$) and multiyear means ($\mu_{d}^{\text{peak}}$, $\mu_{h}^{\text{peak}}$) were given $\text{Normal}(0, 0.5)$ priors. Multiyear means for the spread parameters ($d_y^{\text{sd}}$, $h_y^{\text{sd}}$) were given $\text{Normal}(-0.5, 0.5)$ priors on the log scale to enforce positivity while favoring relatively narrow spreads. Standard deviations governing variation were given either $\text{Exponential}(1)$ or $\text{Exponential}(10)$ if they act on a linear ($\sigma_d^{\text{peak}}$) or log scale ($\sigma_{h}^{\text{peak}}$, $\sigma_d^{\text{sd}}$, $\sigma_h^{\text{sd}}$), respectively. The time-soak coefficient $\beta^{\text{soak}}$ and the negative binomial overdispersion parameter $\phi^{\text{fry}}$ were both assigned $\text{Exponential}(1)$ priors to enforce positivity.
 
-<!-- Note that, in the Stan implementation, we factor this surface into a daily component estimated in the process model and an hourly availability component applied in the observation model. This factorisation yields the same likelihood while reducing memory use. -->
-
-
-
-### Process model for fry abundance in year y in day d.  
-\begin{equation} \label{fry_abund_eq}
-\begin{aligned}
-\hat{N}_{y, d}^{\text{fry}} &= \hat{N}_y^{\text{fry}}{}_{\text{max}} \cdot \exp\left( - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right)\\
-\log \hat{N}_y^{\text{fry}}{}_{\text{max}} &= \log N_y^{\text{fry}} - \log( 2\pi \cdot d_y^{\text{sd}} \cdot h_y^{\text{sd}} )\\
-d_y^{\text{peak}} &\sim \text{Normal}(\mu_d^{\text{peak}} + \beta^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta^{\text{moonxATU}} \cdot (\text{moon}_y \cdot \text{ATU}_y), \sigma_d^{\text{peak}})\\
-\mu_d^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_d^{\text{peak}} &\sim \text{Exponential}(1)\\
-\log d_y^{\text{sd}} &\sim \text{Normal}(\mu_d^{\text{sd}}, \sigma_d^{\text{sd}})\\
-\mu_d^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
-\sigma_d^{\text{sd}} &\sim \text{Exponential}(1)\\
-\log h^{\text{sd}}_y &\sim \text{Normal}(\mu_h^{\text{sd}}, \sigma_h^{\text{sd}})\\
-\mu_h^{\text{sd}} &\sim \text{Normal}(-0.5, 0.5)\\
-\sigma_h^{\text{sd}} &\sim \text{Exponential}(10)\\
-\beta^{\text{moon}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{moonxATU}} &\sim \text{Normal}(0, 0.5)\\
-\end{aligned}
-\end{equation}
 
 ## Estimating factors influencing spawner to fry production
+To estimate how temperatures experienced by the spawners on their upstream migration and 
 
 <!-- Overview of system and data collection -->
 
@@ -738,27 +730,6 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
 \sigma_{\text{proc}}^{sf} &\sim \text{Exponential}(1)\\
 \end{aligned}
 \end{equation}
-
-### Observation model for emergence data  
-\begin{equation} \label{emerge_obs_eq}
-\begin{aligned}
-N_i^{\text{fry}}{}_{\text{obs}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, 1/\phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} - \frac{(h_i - h_i^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i \right) \\
-h_i^{\text{peak}} &= \mu_{h, y_i}^{\text{peak}} + \beta^{\text{dusk}} \cdot \text{dusk}_i\\
-\mu_{h, y}^{\text{peak}} &\sim \text{Normal}(\mu_h^{\text{peak}}, \sigma_h^{\text{peak}})\\
-\mu_h^{\text{peak}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_h^{\text{peak}} &\sim \text{Exponential}(10)\\
-\beta^{\text{soak}} &\sim \text{Exponential}(1) \\
-\beta^{\text{dusk}} &\sim \text{Normal}(0, 0.5) \\
-\phi^{\text{fry}} &\sim \text{Exponential}(1) \\
-\end{aligned}
-\end{equation}
-
-
-
-
-
-
 
 # Results
 
