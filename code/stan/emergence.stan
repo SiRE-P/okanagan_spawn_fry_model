@@ -79,7 +79,7 @@ parameters {
   vector[Y] day_peak_z;
   vector[Y] day_sd_z;
   
-  real<lower=0> emerg_obs_error;
+  real<lower=0> emerg_phi;
   
   //missing data
   vector[N_missing_thermal] thermal_onset_impute;
@@ -183,14 +183,14 @@ model {
   day_peak_z ~ normal(0, 1);
   day_sd_z ~ normal(0, 1);
   
-  emerg_obs_error ~ exponential(1);
+  emerg_phi ~ exponential(1);
   
   for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
     b_dusk * dusk[i];
     real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
-    fry_obs[i] ~ neg_binomial_2(emerge_mu, 1/emerg_obs_error);
+    fry_obs[i] ~ neg_binomial_2(emerge_mu, emerg_phi);
   }
 }
 
@@ -200,6 +200,6 @@ generated quantities{
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] + b_dusk * dusk[i];
     real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
-    log_lik[i] = neg_binomial_2_lpmf(fry_obs[i] | emerge_mu, 1/emerg_obs_error);
+    log_lik[i] = neg_binomial_2_lpmf(fry_obs[i] | emerge_mu, emerg_phi);
   }
 }
