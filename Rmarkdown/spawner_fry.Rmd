@@ -243,7 +243,8 @@ env.df <- env.df %>%
 thermal_barrier <- read.csv("../../Ok_sock_lifecycle_model/outputs/thermal_barrier.csv") %>% 
   select(-X) %>% 
   mutate(fry_year = year + 1) |> 
-  mutate(onset_md = format(as.Date(as.Date(onset - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%b %d"))
+  mutate(onset_md = format(as.Date(as.Date(onset - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%b %d")) |> 
+  filter(threshold == 22)
 
 therm_mod <- lm(duration ~ onset, data = thermal_barrier)
 thermal_barrier$duration_resid <- thermal_barrier$duration - predict(therm_mod)
@@ -297,9 +298,9 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  thermal_dur_resid = ifelse(!is.na(env.df$duration_resid), env.df$duration_resid/sd(env.df$duration_resid, na.rm = TRUE), -999),
                  
                  sigma_sf_prior = 1,
-                 beta_sf_prior = 1,
+                 beta_sf_prior = 0,
                  alpha_sf_prior = -3,
-                 beta_sf_sigma_prior = 1,
+                 beta_sf_sigma_prior = 0.5,
                  alpha_sf_sigma_prior = 1
 )
 
@@ -654,7 +655,20 @@ We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\tex
 
 
 ## Estimating factors influencing spawner to fry production
-To estimate how temperatures experienced by the spawners on their upstream migration and 
+We modelled expected fry abundance $\mu_y^{\text{sf}}$ in year $y$ as a Shepherd function [@shepherd1982] of spawner abundance $N_y^{\text{spawners}}$:
+
+$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot N_y^{\text{spawners}}}{1 + (\beta^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
+where $\alpha_y^{\text{sf}}$ is the density independent production rate in year $y$, $\beta^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. This function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta^{\text{sf}}$ near one, avoiding the need for very small parameter values.
+
+We allow the density independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions, modelling it as a log-linear function in order to ensure positivity:
+
+$$\log \alpha_y^{\text{sf}} = \alpha_0^{\text{sf}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y.$$
+The parameter $\alpha_0^{\text{sf}}$ is the density independent production rate in average conditions and the $\beta$ coefficients are the slope parameters that estimate the effect of environmental conditions on this rate: $\beta^{\text{onset}}$ is the influence of upstream migration thermal barrier onset date, $\beta^{\text{dur}}$ is the additional influence of barrier duration beyond that of onset date, $\beta^{\text{FWMT}}$ is the effect of flow rates exceeding the FWMT range during incubation, and $\beta^{\text{ATU}}$ is the effect of accumulated thermal units during incubation. We assume that realized fry abundances $N_y^{\text{fry}}$ deviate from their expected value $\mu_y^{\text{sf}}$ due to process error $\sigma_{\text{proc}}^{\text{sf}}$, with log abundance following a normal distribution around the expected value:
+
+$$\log N_y^{\text{fry}} \sim \text{Normal}(\log \mu_y^{\text{sf}}, \sigma_{\text{proc}}^{\text{sf}}).$$
+
+We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
+
 
 <!-- Overview of system and data collection -->
 
@@ -713,23 +727,6 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
   coord_cartesian(xlim = c(0.3, 0.95))+
   theme_dag()
 ```
-
-<!--We assume that fry emerge in the spring over a period of days following a Gaussian distribution such that emerging abundance peaks mid-way through their emergence.-->
-
-### Spawner fry Beverton holt model
-\begin{equation} \label{spawner_fry_eq}
-\begin{aligned}
-\log N_y^{\text{fry}} &\sim \text{Normal}(\log \mu_y^{sf}, \sigma_{\text{proc}}^{sf})\\
-\mu_y^{sf} &= \frac{\alpha_y^{sf} \cdot N_y^{\text{spawners}}}{1 + (\beta^{sf} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{sf}}}\\
-\log \alpha_y^{sf} &= \alpha_0^{sf} + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y\\ 
-\beta^{sf} &\sim \text{Lognormal}(1, 1)\\
-\Theta^{sf} &\sim \text{Normal}(0, 1)\\
-\alpha_0^{sf} &\sim \text{Normal}(-3, 1)\\
-\beta^{\text{FWMT}} &\sim \text{Normal}(0, 0.5)\\
-\beta^{\text{ATU}} &\sim \text{Normal}(0, 0.5)\\
-\sigma_{\text{proc}}^{sf} &\sim \text{Exponential}(1)\\
-\end{aligned}
-\end{equation}
 
 # Results
 
