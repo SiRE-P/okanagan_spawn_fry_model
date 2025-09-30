@@ -240,11 +240,13 @@ env.df <- env.df %>%
 ```
 
 ```{r thermal_barrier, include = FALSE}
+barrier_thresh <- 22
+
 thermal_barrier <- read.csv("../../Ok_sock_lifecycle_model/outputs/thermal_barrier.csv") %>% 
   select(-X) %>% 
   mutate(fry_year = year + 1) |> 
   mutate(onset_md = format(as.Date(as.Date(onset - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%b %d")) |> 
-  filter(threshold == 22)
+  filter(threshold == barrier_thresh)
 
 therm_mod <- lm(duration ~ onset, data = thermal_barrier)
 thermal_barrier$duration_resid <- thermal_barrier$duration - predict(therm_mod)
@@ -445,7 +447,7 @@ fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abunda
 ```
 
 ```{r spawner_fry, echo=FALSE, message=FALSE, warning=FALSE}
-spawnV <- seq(0, exp(max(env.df$spawners_ln_est, na.rm = TRUE)), length = 30)
+spawnV <- exp(seq(log(exp(min(env.df$spawners_ln_est, na.rm = TRUE))*0.9), log(exp(max(env.df$spawners_ln_est, na.rm = TRUE))*1.1), length = 50))
 
 FWMT_BH.df <- data.frame()
 for(j in 0:1){
@@ -582,14 +584,14 @@ p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020
   labs(x = "Date of thermal barrier onset")+
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)", )+
   #scale_x_date(expand = c(0, 0))+
-  coord_cartesian(ylim = c(0, 4500), expand = FALSE)+
+  coord_cartesian(ylim = c(0, 5000), expand = FALSE)+
   scale_fill_brewer(palette = "Greys", guide = "none")
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
   plot_layout(height = c(1,0.8), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier. The lines contrast an early (Jun 27; yellow) and late (Jul 22; purple) thermal barrier scenarios, with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated proportional change (log axis) in fry production due to earliest (",thermal_barrier$onset_md[which(thermal_barrier$onset == min(thermal_barrier$onset))]
+fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey). The lines contrast an early (Jun 27; yellow) and late (Jul 22; purple) thermal barrier scenarios, with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated proportional change (log axis) in fry production due to earliest (",thermal_barrier$onset_md[which(thermal_barrier$onset == min(thermal_barrier$onset))]
 ,") vs. latest (",thermal_barrier$onset_md[which(thermal_barrier$onset == max(thermal_barrier$onset))],") thermal barrier onset, longest vs. shortest residual duration, FWMT exceeded vs. maintained, and lowest (", round(min(env.df$ATU)), "°C·d) vs. highest (",round(max(env.df$ATU)),"°C·d) observed ATUs during the incubation period. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
@@ -613,10 +615,21 @@ Here we present a process-based Bayesian model that estimates how flow velocity 
 
 # Methods 
 ## Study system
+
+## Environmental covariates
+### Upstream migration thermal barrier
+We define the thermal barrier period as the days between June 25 and September 30 where minimum daily water temperatures in the lower Okanogan River, measured in Malott Washington, exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Then the onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. 
+
+### Incubation period flow
+### Incubation period accumulated thermal units
+
+
 ## Fry emergence sampling
 The ONA has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
 
 Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
+
+## Directed acyclic graph  
 
 ## Estimating a metric of yearly fry abundance
 The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
