@@ -147,6 +147,9 @@ incubation_end_full <- as.Date("2025-04-10")
 incubation_start <- format(incubation_start_full, "%B ") %>%
   paste0(as.integer(format(incubation_start_full, "%d")))
 
+incubation_end <- format(incubation_end_full, "%B ") %>%
+  paste0(as.integer(format(incubation_end_full, "%d")))
+
 ATU.df <- temp_means %>% 
   mutate(year_start = if_else(format(date, "%m-%d") >= format(incubation_start_full, "%m-%d"),
                               year(date),
@@ -616,18 +619,22 @@ Here we present a process-based Bayesian model that estimates how flow velocity 
 # Methods 
 ## Study system
 
+
+### Salmon enumeration
+### Spawners
+Spawner enumeration surveys in the Index section of the Okanagan river, between Osoyoos and Vasseau lakes (Figure \ref{fig:map}), are conducted during the spawning period between the end of August and the end of November. Details of this survey are described in detail in @manchin2019. In these surveys, all sockeye on the spawning grounds are counted visually and the surveys are repeated weekly during the initial migration phase and every three days during the peak spawning period. Estimating total spawner abundance from these data requires accounting for observation error and the fact that fish remain on the spawning grounds for multiple days and so individuals are counted multiple times. Here we use the model presented in @akenhead2025, which is a hierarchical Bayesian model that estimates the processes of arrival, and exit to the spawning ground in each year. This provides estimates of total spawner abundance with uncertainty. For the purposes of this analysis, we use the estimated mean and standard deviation of log spawner abundance from @akenhead2025 from `r min(emergence_select$sample_year)-1` to `r max(emergence_select$sample_year)-1` as data inputs to our spawner to fry model (described in a subsequent section).
+
+### Fry emergence
+The ONA has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
+
+Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
+
 ## Environmental covariates
 ### Upstream migration thermal barrier
 We define the thermal barrier period as the days between June 25 and September 30 where minimum daily water temperatures in the lower Okanogan River, measured in Malott Washington, exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Then the onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. 
 
-### Incubation period flow
-### Incubation period accumulated thermal units
-
-
-## Fry emergence sampling
-The ONA has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
-
-Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
+### Incubation period flow and temperature
+We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether all daily flow rates are within the FWMT target incubation range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs), which are the cumulative sum of temperatures in degrees Celcius. 
 
 ## Directed acyclic graph  
 
@@ -679,6 +686,11 @@ $$\log \alpha_y^{\text{sf}} = \alpha_0^{\text{sf}} +\beta^{\text{onset}} \cdot \
 The parameter $\alpha_0^{\text{sf}}$ is the density independent production rate in average conditions and the $\beta$ coefficients are the slope parameters that estimate the effect of environmental conditions on this rate: $\beta^{\text{onset}}$ is the influence of upstream migration thermal barrier onset date, $\beta^{\text{dur}}$ is the additional influence of barrier duration beyond that of onset date, $\beta^{\text{FWMT}}$ is the effect of flow rates exceeding the FWMT range during incubation, and $\beta^{\text{ATU}}$ is the effect of accumulated thermal units during incubation. We assume that realized fry abundances $N_y^{\text{fry}}$ deviate from their expected value $\mu_y^{\text{sf}}$ due to process error $\sigma_{\text{proc}}^{\text{sf}}$, with log abundance following a normal distribution around the expected value:
 
 $$\log N_y^{\text{fry}} \sim \text{Normal}(\log \mu_y^{\text{sf}}, \sigma_{\text{proc}}^{\text{sf}}).$$
+We model log spawner abundance $log N_y^{\text{spawners}}$ as:
+
+$$\log N_y^{\text{spawners}} \sim \text{Normal}(\hat{\mu}_y^{\text{spawners}}, \hat{\sigma}_y^{\text{spawners}})$$
+
+where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @akenhead2025.
 
 We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
 
