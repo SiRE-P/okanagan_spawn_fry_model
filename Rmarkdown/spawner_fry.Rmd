@@ -96,6 +96,7 @@ emergence_select <- emergence %>% select(date, brood_year, sample_year, total_ca
   filter(time_set_numeric >= 0, time_set_numeric<=5) %>% 
   filter(!is.na(total_catch)) |> 
   filter(soak_time_min >=5, soak_time_min<=20)
+
 ```
 
 
@@ -230,6 +231,10 @@ scour_des_sum <- scour_des %>%
   mutate(year = brood_year + 1)
 
 env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubation") %>% select(year, non_range_days, total_scour, total_desiccation))
+
+emergence_select <- left_join(emergence_select |> mutate(date = as.Date(date)), flow |> 
+  select(date, daily_flow = value)) |> 
+  mutate(volume_m3 = ifelse(volume_m3 == 0, NA, volume_m3))
 ```
 
 ```{r spawners, include = FALSE}
@@ -285,7 +290,11 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  D = length(dayV),
                  year = as.numeric(factor(emergence_select$sample_year)),
                  fry_obs = emergence_select$total_catch,
-                 soak_time = stand(emergence_select$soak_time_min),
+                 N_missing_volume = sum(is.na(emergence_select$volume_m3)),
+                 volume_missidx = which(is.na(emergence_select$volume_m3)),
+                 volume = ifelse(!is.na(emergence_select$volume_m3), emergence_select$volume_m3, -999),
+                 sample_flow = emergence_select$daily_flow,
+                 soak_time = emergence_select$soak_time_min,
                  day = emergence_select$yday - min(emergence_select$yday) + 1,
                  hour = stand(emergence_select$time_set_numeric),
                  new_moon_date = stand(env.df$new_moon_yday),
@@ -622,24 +631,30 @@ Here we present a process-based Bayesian model that estimates how flow velocity 
 
 ### Salmon enumeration
 ### Spawners
-Spawner enumeration surveys in the Index section of the Okanagan river, between Osoyoos and Vasseau lakes (Figure \ref{fig:map}), are conducted during the spawning period between the end of August and the end of November. Details of this survey are described in detail in @manchin2019. In these surveys, all sockeye on the spawning grounds are counted visually and the surveys are repeated weekly during the initial migration phase and every three days during the peak spawning period. Estimating total spawner abundance from these data requires accounting for observation error and the fact that fish remain on the spawning grounds for multiple days and so individuals are counted multiple times. Here we use the model presented in @akenhead2025, which is a hierarchical Bayesian model that estimates the processes of arrival, and exit to the spawning ground in each year. This provides estimates of total spawner abundance with uncertainty. For the purposes of this analysis, we use the estimated mean and standard deviation of log spawner abundance from @akenhead2025 from `r min(emergence_select$sample_year)-1` to `r max(emergence_select$sample_year)-1` as data inputs to our spawner to fry model (described in a subsequent section).
+Spawner enumeration surveys in the Index section of the Okanagan river, between Osoyoos and Vasseau lakes (Figure \ref{fig:map}), are conducted during the spawning period between the end of August and the end of November. Details of this survey are described in detail in @machin2019. In these surveys, all sockeye on the spawning grounds are counted visually and the surveys are repeated weekly during the initial migration phase and every three days during the peak spawning period. Estimating total spawner abundance from these data requires accounting for observation error and the fact that fish remain on the spawning grounds for multiple days and so individuals are counted multiple times. Here we use the model presented in @akenhead2025, which is a hierarchical Bayesian model that estimates the processes of arrival, and exit to the spawning ground in each year. This provides estimates of total spawner abundance with uncertainty. For the purposes of this analysis, we use the estimated mean and standard deviation of log spawner abundance from @akenhead2025 from `r min(emergence_select$sample_year)-1` to `r max(emergence_select$sample_year)-1` as data inputs to our model (described in a subsequent section).
 
 ### Fry emergence
 The ONA has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
 
 Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
 
+<!-- add explanation for how we impute missing volume sampled -->
+
 ## Environmental covariates
 ### Upstream migration thermal barrier
-We define the thermal barrier period as the days between June 25 and September 30 where minimum daily water temperatures in the lower Okanogan River, measured in Malott Washington, exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Then the onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. 
+We define the thermal barrier period as the days between June 25 and September 30 where minimum daily water temperatures in the lower Okanogan River, measured in Malott Washington, exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Although river temperatures can exceed `r barrier_thresh` $^{\circ}$C before June 25th, we set this as the earliest barrier date because no more than 5% of the run has passed Wells dam (directly downstream) in the past 25 years [@columbiariverdartcolumbiabasinresearchuniversityofwashington2025].
+
+The onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. Duration is strongly negatively correlated with onset date (*r* = `r round(cor(thermal_barrier$onset, thermal_barrier$duration), 2)`), reflecting the fact that duration is likely to be longer when onset is early. To separate these effects, we used residual duration, from a linear model of duration as a function of onset date, which represents whether the barrier lasted longer or shorter than expected for its onset.
+
 
 ### Incubation period flow and temperature
 We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether all daily flow rates are within the FWMT target incubation range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs), which are the cumulative sum of temperatures in degrees Celcius. 
 
-## Directed acyclic graph  
+## Directed acyclic graph and overall model structure
+The assumed causal pathways are presented in our directed acyclic graph (DAG; Figure \@ref(fig:DAG)), and the structure of this DAG is replicated in our model, which we describe in detail in the subsequent sections. This model consists of multiple submodels combined in a joint likelihood in Stan [@stan2024], fit in R v`r getRversion()` [@rcoreteam2024] via the cmdstanr package [@gabry2024].
 
 ## Estimating a metric of yearly fry abundance
-The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
+The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. The index is relative, because we cannot estimate the proportion of all emerging fry that are sampled. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
 
 To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
 
@@ -657,21 +672,23 @@ $$d_y^{\text{peak}} \sim \text{Normal}(\mu_d^{\text{peak}} + \beta_d^{\text{ATU}
 
 The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date.
 
-We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for soak time and for the hourly emergence curve:
+We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for volume sampled and for the hourly emergence curve:
 
 \begin{align*}
 N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{soak}} \cdot t^{\text{soak}}_i - \frac{(h_i - h_{y_i,d_i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{volume}} \cdot (\log(\text{volume}_i) - \log(100)) - \frac{(h_i - h_{y_i,d_i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
 \end{align*}
 
-where $\beta^{\text{soak}}$ is the rate at which fry abundance increases with soak time $t^{\text{soak}}_i$, $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). 
+where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). 
+
+Missing sampled volume was imputed within the Bayesian model using a log-log regression of volume on soak time and daily flow rates observed in the Okanagan River near Oliver. The parameters were estimated based on the observed volumes and missing values were imputed based on these relationships. 
 
 Observations from the survey crew suggest that emergence timing within each day may be linked to the timing of dusk. Thus, we modelled daily peak emergence, $h_{y,d}^{\text{peak}}$, as a normal distribution with a mean that varies with the timing of dusk $\text{dusk}_{y,d}$, along with a hierarchical multiyear mean $\mu_{h}^{\text{peak}}$ and standard deviation, $\sigma_{h}^{\text{peak}}$:
 
 $$h_{y,d}^{\text{peak}} \sim \text{Normal}(\mu_{h}^{\text{peak}} + \beta_{h}^{\text{dusk}} \cdot \text{dusk}_{y,d}, \sigma_{h}^{\text{peak}}).$$
 
 
-We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$, $\beta_{h}^{\text{dusk}}$) and multiyear means ($\mu_{d}^{\text{peak}}$, $\mu_{h}^{\text{peak}}$) were given $\text{Normal}(0, 0.5)$ priors. Multiyear means for the spread parameters ($d_y^{\text{sd}}$, $h_y^{\text{sd}}$) were given $\text{Normal}(-0.5, 0.5)$ priors on the log scale to enforce positivity while favoring relatively narrow spreads. Standard deviations governing variation were given either $\text{Exponential}(1)$ or $\text{Exponential}(10)$ if they act on a linear ($\sigma_d^{\text{peak}}$) or log scale ($\sigma_{h}^{\text{peak}}$, $\sigma_d^{\text{sd}}$, $\sigma_h^{\text{sd}}$), respectively. The time-soak coefficient $\beta^{\text{soak}}$ and the negative binomial overdispersion parameter $\phi^{\text{fry}}$ were both assigned $\text{Exponential}(1)$ priors to enforce positivity.
+We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$, $\beta_{h}^{\text{dusk}}$) and multiyear means ($\mu_{d}^{\text{peak}}$, $\mu_{h}^{\text{peak}}$) were given $\text{Normal}(0, 0.5)$ priors. The sample volume scaling parameter$\beta^{\text{volume}}$ was assigned a prior of $\text{Normal}(1, 1)$ to reflect the expectation that sampled fry should increase proportionally with sampled volume. Multiyear means for the spread parameters ($d_y^{\text{sd}}$, $h_y^{\text{sd}}$) were given $\text{Normal}(-0.5, 0.5)$ priors on the log scale to enforce positivity while favoring relatively narrow spreads. Standard deviations governing variation were given either $\text{Exponential}(1)$ or $\text{Exponential}(10)$ if they act on a linear ($\sigma_d^{\text{peak}}$) or log scale ($\sigma_{h}^{\text{peak}}$, $\sigma_d^{\text{sd}}$, $\sigma_h^{\text{sd}}$), respectively. The negative binomial overdispersion parameter $\phi^{\text{fry}}$ was assigned an $\text{Exponential}(1)$ prior to enforce positivity.
 
 
 ## Estimating factors influencing spawner to fry production
@@ -695,14 +712,12 @@ where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are
 We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
 
 
-<!-- Overview of system and data collection -->
 
 <!-- switch to map that includes vertical drop structures -->
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
 ```
 
-The assumed causal pathways are presented in figure \@ref(fig:DAG).  
 
 ```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=4.1, fig.pos='center', fig.cap= "Directed acyclic graph showing assumed causal pathways."}
 

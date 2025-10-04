@@ -15,6 +15,12 @@ data {
   int<lower=0> N; //number of observations
   int<lower=0> D; //number of days to be modelled
   array[N] int fry_obs; //observed fry
+  
+  int N_missing_volume;
+  array[N_missing_volume] int volume_missidx; 
+  vector[N] volume;
+  vector[N] sample_flow;
+  
   vector[N] soak_time; //soak time in minutes
   array[N] int year; //year
   vector[N] hour; //hour set started - standardized 
@@ -52,13 +58,16 @@ parameters {
   
   real a_FWMT;
   real sf_ATU;
-  // real sf_therm_bar;
-  
-  // real a_therm_onset;
+
   real b_therm_onset;
   real b_therm_dur;
   
-  real<lower=0> soak_b;
+  real a_volume;
+  real soak_b;
+  real b_sample_flow;
+  real<lower=0> sigma_volume;
+  
+  real b_volume;
   real b_moon;
   real b_ATU;
   real b_moonxATU;
@@ -82,11 +91,15 @@ parameters {
   real<lower=0> emerg_phi;
   
   //missing data
+  vector<lower=0>[N_missing_volume] volume_impute;
   vector[N_missing_thermal] thermal_onset_impute;
   vector[N_missing_thermal] thermal_dur_resid_impute;
 }
 transformed parameters{
   //missing variables
+  vector[N] volume_merge;
+  volume_merge = merge_missing(volume_missidx, to_vector(volume), volume_impute);
+
   vector[Y] thermal_onset_merge;
   thermal_onset_merge = merge_missing(thermal_missidx, to_vector(thermal_onset), thermal_onset_impute);
 
@@ -154,6 +167,11 @@ model {
   
   thermal_dur_resid_impute ~  std_normal();
   thermal_onset_impute ~ std_normal();
+  
+  soak_b ~ normal(1, 0.5);
+  b_sample_flow ~ normal(1, 0.5);
+  sigma_volume ~ exponential(10);
+  volume_merge ~ lognormal(a_volume + soak_b * log(soak_time) + b_sample_flow * log(sample_flow), sigma_volume);
 
   
   sigma_sf ~ exponential(sigma_sf_prior);
@@ -163,7 +181,7 @@ model {
   }
   
   //fry observation model
-  soak_b ~ exponential(1);
+  b_volume ~ normal(1, 0.5);
   b_moon ~ normal(0, 0.5);
   b_ATU ~ normal(0, 0.5);
   b_moonxATU ~ normal(0, 0.5);
@@ -188,7 +206,7 @@ model {
   for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
     b_dusk * dusk[i];
-    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + b_volume * (log(volume_merge[i]) - log(100));
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     fry_obs[i] ~ neg_binomial_2(emerge_mu, emerg_phi);
   }
@@ -198,7 +216,7 @@ generated quantities{
   vector[N] log_lik;
   for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] + b_dusk * dusk[i];
-    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + soak_b * soak_time[i];
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + b_volume * (log(volume_merge[i]) - log(100));
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     log_lik[i] = neg_binomial_2_lpmf(fry_obs[i] | emerge_mu, emerg_phi);
   }
