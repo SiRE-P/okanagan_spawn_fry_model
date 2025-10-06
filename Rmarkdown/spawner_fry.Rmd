@@ -230,6 +230,19 @@ scour_des_sum <- scour_des %>%
   ungroup() %>% 
   mutate(year = brood_year + 1)
 
+freshet_mat <- flow %>% 
+  filter(year %in% unique(emergence_select$brood_year)) %>% 
+  filter(month < c(10)) %>% 
+  select(year, yday, value) %>% 
+  group_by(yday) %>% 
+  mutate(nyears = n()) %>% 
+  ungroup() %>% 
+  filter(nyears == length(unique(emergence_select$brood_year))) %>% 
+  select(-nyears) %>% 
+  spread(key = yday, value = value) %>% 
+  select(-year) %>% 
+  data.matrix()
+
 env.df <- env.df %>% left_join(scour_des_sum %>% filter(life_stage2 == "incubation") %>% select(year, non_range_days, total_scour, total_desiccation))
 
 emergence_select <- left_join(emergence_select |> mutate(date = as.Date(date)), flow |> 
@@ -310,6 +323,12 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  thermal_missidx = which(is.na(env.df$onset)),
                  thermal_onset = ifelse(!is.na(env.df$onset), stand(env.df$onset), -999),
                  thermal_dur_resid = ifelse(!is.na(env.df$duration_resid), env.df$duration_resid/sd(env.df$duration_resid, na.rm = TRUE), -999),
+                 
+                 freshet_days = ncol(freshet_mat),
+                 freshet_flow = freshet_mat,
+                 freshet_threshold_prior_mu = 42,
+                 freshet_threshold_prior_sigma = 5,
+                 freshet_transition_slope = 0.2,
                  
                  sigma_sf_prior = 1,
                  beta_sf_prior = 0,
@@ -461,14 +480,19 @@ fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abunda
 ```{r spawner_fry, echo=FALSE, message=FALSE, warning=FALSE}
 spawnV <- exp(seq(log(exp(min(env.df$spawners_ln_est, na.rm = TRUE))*0.9), log(exp(max(env.df$spawners_ln_est, na.rm = TRUE))*1.1), length = 50))
 
+fresh_days_scaled <- spread_draws(fit, fresh_days_scaled[y]) |> group_by(y) |> summarise(fresh_days_scaled = mean(fresh_days_scaled)) |> 
+  pull(fresh_days_scaled)
+mean_fresh_days_scaled <- mean(fresh_days_scaled)
+
 FWMT_BH.df <- data.frame()
 for(j in 0:1){
   for(k in 1:2){
     onset <- quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], probs = c(0.15, 0.85))[k]
   alpha_sf <- exp(post$alpha0 + post$a_FWMT * j + post$b_therm_onset * onset)
+  beta_sf <- exp(post$beta0 + post$b_freshet * mean_fresh_days_scaled)
   for(i in 1:length(spawnV)){
-    total_fry = (alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
-    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$beta_sf)))
+    total_fry = (alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
   }
   }
 }
@@ -496,33 +520,42 @@ fry_summary <- spread_draws(fit, total_fry_ln[year]) %>%
             u66 = quantile(total_fry, probs = 0.835),
             total_fry = median(total_fry))
 
+alpha_sf <- exp(post$alpha0)
+beta_sf <- exp(post$beta0 + post$b_freshet * 0)
+mu_no_fresh <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+beta_sf <- exp(post$beta0 + post$b_freshet * max(fresh_days_scaled))
+mu_fresh <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 0)
-mu_FWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+beta_sf <- exp(post$beta0 + post$b_freshet * mean_fresh_days_scaled)
+mu_FWMT <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
-mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * min(dat_list$ATU))
-mu_lowATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_lowATU <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * max(dat_list$ATU))
-mu_highATU <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_highATU <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 alpha_sf <- exp(post$alpha0 + post$b_therm_onset * min(dat_list$thermal_onset[-dat_list$thermal_missidx]))
-mu_early_onset <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_early_onset <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$b_therm_onset * max(dat_list$thermal_onset[-dat_list$thermal_missidx]))
-mu_late_onset <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_late_onset <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 alpha_sf <- exp(post$alpha0 + post$b_therm_dur * min(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
-mu_short_dur <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_short_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$b_therm_dur * max(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
-mu_long_dur <-(alpha_sf * spawnV[i])/(1 + post$beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_long_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
+                                 freshet = 100 * (mu_fresh - mu_no_fresh)/mu_no_fresh,
                                  FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, 
                                  ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU, 
                                  onset = 100 * (mu_early_onset - mu_late_onset)/mu_late_onset, 
                                  duration = 100 * (mu_long_dur - mu_short_dur)/mu_short_dur)
 
 fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
+                         freshet = mu_fresh/mu_no_fresh,
                                  FWMT = mu_noFWMT/mu_FWMT, 
                                  ATU = mu_lowATU/mu_highATU, 
                                  onset = mu_early_onset/mu_late_onset, 
@@ -569,10 +602,11 @@ p1 <- FWMT_BH_summary.df |>
 p3 <- fry_ratios %>%
   rename("Low vs. high ATUs" = "ATU",
          "FWMT exceeded" = "FWMT",
+         "freshet" = "freshet",
         "early vs. late thermal barrier" =  "onset",
          "residual thermal barrier duration" = "duration") |> 
   gather(key = variable, value = ratio, -draw) %>% 
-  mutate(variable = factor(variable, levels = unique(variable)[c(3,4,1,2)]), pct_change = (ratio - 1) * 100) |>   # convert ratio to % change
+  mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)]), pct_change = (ratio - 1) * 100) |>   # convert ratio to % change
   ggplot(aes(x = variable, y = pct_change))+
   geom_hline(yintercept = 1, lty = 2)+
   stat_pointinterval(.width = CIs)+
@@ -587,7 +621,7 @@ thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), max(env.df$onset, na.rm =
 thermal_onset.df <- data.frame()
 for(i in 1:30){
 alpha_sf <- exp(post$alpha0 + post$b_therm_onset * thermal_onsetV_scaled[i])
-hold <-(alpha_sf * exp(median(dat_list$spawner_ln_est)))/(1 + post$beta_sf * (exp(median(dat_list$spawner_ln_est))/1e05)^ post$theta_sf)
+hold <-(alpha_sf * exp(median(dat_list$spawner_ln_est)))/(1 + beta_sf * (exp(median(dat_list$spawner_ln_est))/1e05)^ post$theta_sf)
 thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold))
 }
 
@@ -618,7 +652,7 @@ While scouring flows during the incubation period can reduce survival, they may 
 
 While desiccation, scour, and sediment flushing occur naturally, they are directly influenced by dam-influenced flow regulation, as is the case in the Okanagan River. Because of this, the Okanagan Basin Implementation Board adopted seasonally varying target flows in 1976, to ensure that flow is suitable for each life stage of salmon in the river [@okanaganbasinimplementationboard1982], but challenges associated with balancing flood mitigation as well as uncertainty in real-time conditions resulted in flows frequently exceeding or falling below this range [@ng2025]. To address this issue, the Fish/Water Management Tool (FWMT) was developed as a decision support tool that provides real-time predictions of the consequences of water management decisions for fish and other users [@hyatt2015]. Since its implementation in 2004, there have been fewer days where flows fell below or exceeded the target flow range [@ng2025; @alexander2024]. 
 
-It has been assumed that improved flow compliance has reduced scour and desiccation, and thus improved egg to fry survival; however, quantifying this benefit is challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior. Similarly, @alexander2024 found a two-fold increase in the ratio of pre-smolts (i.e., in-lake fry in the fall and winter following emergence) to spawners after brood year 2008 (four years post FWMT implementation) and concluded that FWMT was a strong contributing factor to the sockeye recovery. However, despite this, neither study was able to establish a causal link between fry recruitment and interannual variation in flow rates.
+It has been assumed that improved flow compliance has reduced scour and desiccation, and thus improved egg to fry survival. However, quantifying this benefit is challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior. Similarly, @alexander2024 found a two-fold increase in the ratio of pre-smolts (i.e., in-lake fry in the fall and winter following emergence) to spawners after brood year 2008 (four years post FWMT implementation) and concluded that FWMT was a strong contributing factor to the sockeye recovery. However, despite this, neither study was able to establish a causal link between fry recruitment and interannual variation in flow rates.
 
 <!-- Add review of temperature effects Beacham et al. 1990-->
 

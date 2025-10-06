@@ -40,6 +40,12 @@ data {
   
   vector[D] day_std; //sequence of all days to be predicted
   
+  int freshet_days;
+  array[Y, freshet_days]  real<lower=0> freshet_flow;
+  real freshet_transition_slope;
+  real freshet_threshold_prior_mu;
+  real<lower=0> freshet_threshold_prior_sigma;
+
   real sigma_sf_prior;
   real alpha_sf_prior;
   real beta_sf_prior;
@@ -50,7 +56,7 @@ data {
 parameters {
   vector<lower=1>[Y] spawners;
   
-  real<lower=0> beta_sf;
+  real beta0;
   real<lower=0> theta_sf;
   real alpha0; 
   real<lower=0> sigma_sf;
@@ -58,9 +64,12 @@ parameters {
   
   real a_FWMT;
   real sf_ATU;
+  
+  real<lower=0> freshet_threshold; 
 
   real b_therm_onset;
   real b_therm_dur;
+  real b_freshet;
   
   real a_volume;
   real soak_b;
@@ -111,6 +120,9 @@ transformed parameters{
   vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
+  vector[Y] fresh_days;
+  vector[Y] fresh_days_scaled;
+
   
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
@@ -119,21 +131,24 @@ transformed parameters{
   b_moonxATU * (new_moon_date .* ATU);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
   
-  //thermal barrier effect
-  // vector[Y] therm_bar;
-  // for(y in 1:Y){
-  // therm_bar[y] = inv_logit(a_therm_onset + b_therm_onset * thermal_onset_merge[y]) * exp(b_therm_dur * thermal_dur_resid_merge[y]);
-  // }
-  
   //year specific alphas
   vector[Y] alpha_sf;
+  vector[Y] beta_sf;
   for (y in 1:Y) {
+  fresh_days[y] = 0;
+    for (d in 1:freshet_days) {
+      fresh_days[y] += inv_logit(freshet_transition_slope * (freshet_flow[y, d] - freshet_threshold));
+    }    
+    
     alpha_sf[y] = exp(alpha0
     + a_FWMT * exceeded_FWMT[y]
     + sf_ATU * ATU[y]
     + b_therm_onset * thermal_onset_merge[y]
     + b_therm_dur * thermal_dur_resid_merge[y]);
   }
+    fresh_days_scaled = fresh_days/sd(fresh_days);
+    beta_sf = exp(beta0 + b_freshet * fresh_days_scaled); // 57 = sd(rowSums(freshet_mat>28.5))
+
   
   vector[Y] peak_fry;
   for (y in 1:Y){
@@ -152,22 +167,24 @@ model {
   //spawner fry beverton-holt
   
   alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
-  beta_sf ~ lognormal(beta_sf_prior, beta_sf_sigma_prior);
+  beta0 ~ normal(beta_sf_prior, beta_sf_sigma_prior);
   theta_sf ~ normal(1, 0.1);
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
-  // sf_therm_bar ~ normal(0, 0.5);
-  
-  // a_therm_onset ~ normal(0, 1);
+
+  freshet_threshold ~ normal(freshet_threshold_prior_mu, freshet_threshold_prior_sigma);
+
   b_therm_dur ~ normal(0, 0.5);
   b_therm_onset ~ normal(0, 0.5);
+  b_freshet ~ normal(0, 0.5);
   
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
   
   thermal_dur_resid_impute ~  std_normal();
   thermal_onset_impute ~ std_normal();
   
+  a_volume ~ normal(0,2);
   soak_b ~ normal(1, 0.5);
   b_sample_flow ~ normal(1, 0.5);
   sigma_volume ~ exponential(10);
@@ -176,7 +193,7 @@ model {
   
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf * spawners[y]/1e05)^theta_sf));
+    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf[y] * spawners[y]/1e5)^theta_sf));
     total_fry_ln[y] ~ normal(fry_mu_ln, sigma_sf);
   }
   
