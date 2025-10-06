@@ -168,7 +168,7 @@ model {
   
   alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
   beta0 ~ normal(beta_sf_prior, beta_sf_sigma_prior);
-  theta_sf ~ normal(1, 0.1);
+  theta_sf ~ normal(1, 0.2);
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
