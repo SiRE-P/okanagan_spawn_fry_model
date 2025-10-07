@@ -352,17 +352,17 @@ fit <- run_or_load_model(
   seed = 123
 )
 
-worst_Rhat <- fit$summary() %>%
-  as.data.frame() %>%
-  mutate(rhat = round(rhat, 3)) %>%
-  arrange(desc(rhat))
-
-worst_Rhat %>%
-  filter(ess_bulk > 3) %>%
-  ggplot(aes(x = ess_bulk, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.01, lty = 2) +
-  geom_vline(xintercept = 400, lty = 2)
+# worst_Rhat <- fit$summary() %>%
+#   as.data.frame() %>%
+#   mutate(rhat = round(rhat, 3)) %>%
+#   arrange(desc(rhat))
+# 
+# worst_Rhat %>%
+#   filter(ess_bulk > 3) %>%
+#   ggplot(aes(x = ess_bulk, y = rhat)) +
+#   geom_point() +
+#   geom_hline(yintercept = 1.01, lty = 2) +
+#   geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -600,17 +600,17 @@ p1 <- FWMT_BH_summary.df |>
 
 
 p3 <- fry_ratios %>%
-  rename("Low vs. high ATUs" = "ATU",
+  rename("low high ATUs" = "ATU",
          "FWMT exceeded" = "FWMT",
-         "freshet" = "freshet",
-        "early vs. late thermal barrier" =  "onset",
+         "high pre-spawn flushing" = "freshet",
+        "early thermal barrier" =  "onset",
          "residual thermal barrier duration" = "duration") |> 
   gather(key = variable, value = ratio, -draw) %>% 
   mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)]), pct_change = (ratio - 1) * 100) |>   # convert ratio to % change
   ggplot(aes(x = variable, y = pct_change))+
   geom_hline(yintercept = 1, lty = 2)+
   stat_pointinterval(.width = CIs)+
-  ylab("Change in fry production (%)")+
+  ylab("Change in per spawner fry production (%)")+
   xlab("")+
   scale_x_discrete(labels = label_wrap(10))+
   scale_y_continuous(limits = c(-100, 50), expand = c(0, 0))
@@ -626,7 +626,7 @@ thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onset
 }
 
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = fry))+
-  stat_lineribbon()+
+  stat_lineribbon(.width = c(0.66, 0.95))+
   labs(x = "Date of thermal barrier onset")+
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)", )+
   #scale_x_date(expand = c(0, 0))+
@@ -644,9 +644,22 @@ fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between sp
 Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))`--`r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
 
 # Introduction
-Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of their southern range in North America [@rand2012; @grant2019], highlighting the urgent need for management measures that can boost survival and contribute to maintenance and recovery. In this context, the Okanagan sockeye represent a rare success story where targeted management measures have proven effective [@alexander2024], resulting in a twenty fold increase in spawner abundance since the early 2000s [@bailey2025]. However, because multiple management measures were implemented concurrently---habitat restoration, a hatchery restocking program, improved dam passage, managing dam outflows to ensure "fish-friendly flows"---and corresponded with changing environmental conditions, it has proven challenging to quantify the contribution of each intervention. Based on a weight of evidence approach, @alexander2024 concluded that these management interventions jointly contributed to the recovery, and amplified the positive effects of a 2007 shift towards more favourable coastal marine conditions. Still, quantitative estimates of how individual management interventions impact productivity and survival are needed in order to ensure that limited conservation resources are used effectively, and to assess whether similar intervention could support recovery in other salmon populations. 
+Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of their southern range in North America [@rand2012; @grant2019], highlighting the urgent need for management measures that can boost survival and contribute to maintenance and recovery. In this context, the Okanagan sockeye represent a rare success story where targeted management measures have proven effective [@alexander2024], resulting in a twenty fold increase in spawner abundance since the early 2000s [@bailey2025]. However, because multiple management measures were implemented concurrently---habitat restoration, a hatchery restocking program, improved dam passage, managing dam outflows to ensure "fish-friendly flows"---and corresponded with changing environmental conditions, it has proven challenging to quantify the contribution of each intervention. Based on a weight of evidence approach, @alexander2024 concluded that these management interventions jointly contributed to the recovery, and amplified the positive effects of a 2007 shift towards more favourable coastal marine conditions. Still, quantitative estimates of how environmental conditions and individual management interventions impact productivity and survival are needed in order to ensure that limited conservation resources are used effectively, and to assess whether similar intervention could support recovery in other salmon populations. 
 
-This study focuses on one of these interventions: the regulation of dam flows in the Okanagan River to maintain suitable conditions during egg incubation, reducing the risk of scouring from high flows and desiccation from low flows. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. During this period, high flows can scour the stream bed, potentially dislodging or burying eggs and alevin, while also increasing fine sediment infiltration, which in turn reduces oxygen supply [@devries1997; @ingram2011]. The degree to which scour reduces survival is assumed to be a sigmoidal function of the depth reached by scour, which increases with flow velocity [@glawdel2011]. Sockeye redds tend to be buried at depths between 10 and 25 cm below the stream bed [@devries1997] and survival is determined by the proportion of the eggs that are impacted by scour. Likewise, if flows are low enough to expose the eggs to air, mortality can occur through desiccation or freezing [@casas-mulet2015]. 
+This study focuses on the spawner to fry component of the Okanagan sockeye lifecycle, with the goal of understanding how environmental factors and management interventions affect production at this stage. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. Productivity during this lifestage may be influenced by the number of spawning adults and their condition, the condition of the spawning grounds, and environmental conditions during egg incubation. 
+
+The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egsg survival through disturbance and displacement [@burgner1969; @essington2000]. 
+
+Conditions experienced during upstream migration may also influence spawner-to-fry production by affecting the condition of fish when they reach the spawning grounds, in addition to any direct effects on abundance through pre-spawn mortality [@fenkes2016]. Okanagan sockeye must migrate 830 km up the mainstem of the Columbia River, passing by nine dams on their way, and then an additional X km up the Okanogan river and a tenth dam, before they reach their spawning grounds above Osoyoos lake. Summer temperatures in the Okanogan River routinely become hot enough to block migration, forcing fish to hold in Lake Pateros at the confluence of the Columbia River [@hyatt2020]. The onset of this thermal barrier ranges from 
+
+
+
+
+
+
+
+
+one of these interventions: the regulation of dam flows in the Okanagan River to maintain suitable conditions during egg incubation, reducing the risk of scouring from high flows and desiccation from low flows. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. During this period, high flows can scour the stream bed, potentially dislodging or burying eggs and alevin, while also increasing fine sediment infiltration, which in turn reduces oxygen supply [@devries1997; @ingram2011]. The degree to which scour reduces survival is assumed to be a sigmoidal function of the depth reached by scour, which increases with flow velocity [@glawdel2011]. Sockeye redds tend to be buried at depths between 10 and 25 cm below the stream bed [@devries1997] and survival is determined by the proportion of the eggs that are impacted by scour. Likewise, if flows are low enough to expose the eggs to air, mortality can occur through desiccation or freezing [@casas-mulet2015]. 
 
 While scouring flows during the incubation period can reduce survival, they may have beneficial effects if they occur at other times of year. Over time, fine sediments can accumulate in spawning habitat, filling the spaces between spawning gravels, and causing mortality by reducing dissolved oxygen and trapping emerging alevins [@moring1982]. High-velocity flows, such as those during freshet, can flush fine sediments from spawning gravel, and may be critical to maintaining productive spawning habitat [@reiser1989].
 
