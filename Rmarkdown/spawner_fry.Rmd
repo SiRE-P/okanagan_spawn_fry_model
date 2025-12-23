@@ -79,7 +79,8 @@ emergence$time_set_numeric <- with(emergence, {
 
 emergence <- emergence %>% mutate(volume_m3 = ifelse(volume_m3<0, NA, volume_m3),
                                   mean_nightly_discharge_cms = ifelse(mean_nightly_discharge_cms>100, NA, mean_nightly_discharge_cms)) %>% 
-  mutate(total_catch = as.integer(total_catch))
+  mutate(total_catch = as.integer(total_catch)) |> 
+  filter(sample_year>2002) #come back to this later - we have earlier data
 
 new_moons <- data.frame()
 for(i in 1:length(unique(emergence$sample_year))){
@@ -326,7 +327,7 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  
                  freshet_days = ncol(freshet_mat),
                  freshet_flow = freshet_mat,
-                 freshet_threshold_prior_mu = 42,
+                 freshet_threshold_prior_mu = 57,
                  freshet_threshold_prior_sigma = 5,
                  freshet_transition_slope = 0.2,
                  
@@ -352,17 +353,17 @@ fit <- run_or_load_model(
   seed = 123
 )
 
-# worst_Rhat <- fit$summary() %>%
-#   as.data.frame() %>%
-#   mutate(rhat = round(rhat, 3)) %>%
-#   arrange(desc(rhat))
-# 
-# worst_Rhat %>%
-#   filter(ess_bulk > 3) %>%
-#   ggplot(aes(x = ess_bulk, y = rhat)) +
-#   geom_point() +
-#   geom_hline(yintercept = 1.01, lty = 2) +
-#   geom_vline(xintercept = 400, lty = 2)
+worst_Rhat <- fit$summary() %>%
+  as.data.frame() %>%
+  mutate(rhat = round(rhat, 3)) %>%
+  arrange(desc(rhat))
+
+worst_Rhat %>%
+  filter(ess_bulk > 3) %>%
+  ggplot(aes(x = ess_bulk, y = rhat)) +
+  geom_point() +
+  geom_hline(yintercept = 1.01, lty = 2) +
+  geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -547,12 +548,16 @@ mu_short_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$thet
 alpha_sf <- exp(post$alpha0 + post$b_therm_dur * max(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
 mu_long_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
 
+mid_perc_change <- function(x, y){
+  100 * (x - y)/((x + y)/2)
+}
+
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
-                                 freshet = 100 * (mu_fresh - mu_no_fresh)/mu_no_fresh,
-                                 FWMT = 100 * (mu_FWMT - mu_noFWMT)/mu_noFWMT, 
-                                 ATU = 100 * (mu_highATU - mu_lowATU)/mu_lowATU, 
-                                 onset = 100 * (mu_early_onset - mu_late_onset)/mu_late_onset, 
-                                 duration = 100 * (mu_long_dur - mu_short_dur)/mu_short_dur)
+                                 freshet = mid_perc_change(mu_fresh, mu_no_fresh),
+                                 FWMT = mid_perc_change(mu_FWMT, mu_noFWMT), 
+                                 ATU = mid_perc_change(mu_highATU, mu_lowATU), 
+                                 onset = mid(mu_early_onset,mu_late_onset), 
+                                 duration = mid(mu_long_dur, mu_short_dur))
 
 fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
                          freshet = mu_fresh/mu_no_fresh,
@@ -648,11 +653,13 @@ Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of thei
 
 This study focuses on the spawner to fry component of the Okanagan sockeye lifecycle, with the goal of understanding how environmental factors and management interventions affect production at this stage. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. Productivity during this lifestage may be influenced by the number of spawning adults and their condition, the condition of the spawning grounds, and environmental conditions during egg incubation. 
 
-The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egsg survival through disturbance and displacement [@burgner1969; @essington2000]. 
+The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. 
 
-Conditions experienced during upstream migration may also influence spawner-to-fry production by affecting the condition of fish when they reach the spawning grounds, in addition to any direct effects on abundance through pre-spawn mortality [@fenkes2016]. Okanagan sockeye must migrate 830 km up the mainstem of the Columbia River, passing by nine dams on their way, and then an additional X km up the Okanogan river and a tenth dam, before they reach their spawning grounds above Osoyoos lake. Summer temperatures in the Okanogan River routinely become hot enough to block migration, forcing fish to hold in Lake Pateros at the confluence of the Columbia River [@hyatt2020]. The onset of this thermal barrier ranges from 
+Conditions experienced during upstream migration may also influence spawner-to-fry production by affecting the condition of fish when they reach the spawning grounds, in addition to any direct effects on abundance through mortality during migration [@fenkes2016]. Elevated river temperatures place considerable stress on migrating sockeye; higher temperatures increase energy use [@rand2006], promote pathogen development [@crossin2008], and reduce aerobic scope [@eliason2011]. This results in reduced migration survival when temperatures exceed 18 $^circ$C [@martins2012], particularly for females [@crossin2008; @martins2012a]. However, there is also evidence that high temperatures encountered during migration can lead to egg-retention [@quinn2007], failure to spawn before dying [@gilhousen1990], and reduced egg-to-fry survival [@paterson2004]. 
 
+There is, however, variation among populations in their thermal tolerance that correspond with the historic river temperatures that they have experienced [@martins2011; @eliason2011]. 
 
+Okanagan sockeye begin their 830 km migrating up the mainsteam of the Columbia River in mid June, passing by nine hydroelectric dams and reaching the confluence of the Okanogan River by late June or early July. From there, they migrate an additional 185 km up the Okanogan River reaching their spawning grounds above Osoyoos lake. Summer temperatures in the Okanogan River routinely become hot enough to block migration, forcing fish to hold in Lake Pateros at the confluence of the Columbia River and resulting in considerable en-route mortality [@hyatt2020]. 
 
 
 
