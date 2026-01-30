@@ -485,15 +485,20 @@ fresh_days_scaled <- spread_draws(fit, fresh_days_scaled[y]) |> group_by(y) |> s
   pull(fresh_days_scaled)
 mean_fresh_days_scaled <- mean(fresh_days_scaled)
 
+low <- 0.15
+high <- 0.85
+
 FWMT_BH.df <- data.frame()
 for(j in 0:1){
   for(k in 1:2){
-    onset <- quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], probs = c(0.15, 0.85))[k]
-  alpha_sf <- exp(post$alpha0 + post$a_FWMT * j + post$b_therm_onset * onset)
+    onset <- quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], probs = c(low, high))[k]
+  alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
   beta_sf <- exp(post$beta0 + post$b_freshet * mean_fresh_days_scaled)
   for(i in 1:length(spawnV)){
-    total_fry = (alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
-    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
+    effective_spawners <- spawnV[i] * plogis(post$a_effective_spawners + post$b_therm_onset * onset)
+
+    total_fry = (alpha_sf * effective_spawners)/(1 + beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], effective_spawners = effective_spawners, FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
   }
   }
 }
@@ -521,50 +526,64 @@ fry_summary <- spread_draws(fit, total_fry_ln[year]) %>%
             u66 = quantile(total_fry, probs = 0.835),
             total_fry = median(total_fry))
 
+med_spawners <- exp(median(dat_list$spawner_ln_est))
+
 alpha_sf <- exp(post$alpha0)
-beta_sf <- exp(post$beta0 + post$b_freshet * 0)
-mu_no_fresh <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
-beta_sf <- exp(post$beta0 + post$b_freshet * max(fresh_days_scaled))
-mu_fresh <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+beta_sf <- exp(post$beta0 + post$b_freshet * quantile(fresh_days_scaled, low))
+mu_no_fresh <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
+beta_sf <- exp(post$beta0 + post$b_freshet * quantile(fresh_days_scaled, high))
+mu_fresh <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 0)
 beta_sf <- exp(post$beta0 + post$b_freshet * mean_fresh_days_scaled)
-mu_FWMT <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_FWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
-mu_noFWMT <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+mu_noFWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * min(dat_list$ATU))
-mu_lowATU <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * max(dat_list$ATU))
-mu_highATU <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU, low))
+mu_lowATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU, high))
+mu_highATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-alpha_sf <- exp(post$alpha0 + post$b_therm_onset * min(dat_list$thermal_onset[-dat_list$thermal_missidx]))
-mu_early_onset <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
-alpha_sf <- exp(post$alpha0 + post$b_therm_onset * max(dat_list$thermal_onset[-dat_list$thermal_missidx]))
-mu_late_onset <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], low))
+alpha_sf <- exp(post$alpha0)
+mu_early_onset <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], high))
+mu_late_onset <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-alpha_sf <- exp(post$alpha0 + post$b_therm_dur * min(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
-mu_short_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
-alpha_sf <- exp(post$alpha0 + post$b_therm_dur * max(dat_list$thermal_dur_resid[-dat_list$thermal_missidx]))
-mu_long_dur <-(alpha_sf * spawnV[i])/(1 + beta_sf * (spawnV[i]/1e05)^ post$theta_sf);
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_dur * quantile(dat_list$thermal_dur_resid[-dat_list$thermal_missidx], low))
+mu_short_dur <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_dur * quantile(dat_list$thermal_dur_resid[-dat_list$thermal_missidx], high))
+mu_long_dur <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-mid_perc_change <- function(x, y){
-  100 * (x - y)/((x + y)/2)
+log_rr <- function(treatment, baseline){
+  log(treatment/baseline)
 }
 
-fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
-                                 freshet = mid_perc_change(mu_fresh, mu_no_fresh),
-                                 FWMT = mid_perc_change(mu_FWMT, mu_noFWMT), 
-                                 ATU = mid_perc_change(mu_highATU, mu_lowATU), 
-                                 onset = mid(mu_early_onset,mu_late_onset), 
-                                 duration = mid(mu_long_dur, mu_short_dur))
+perc_change <- function(treatment, baseline){
+  (exp(log_rr(treatment, baseline))-1) * 100
+}
 
-fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
-                         freshet = mu_fresh/mu_no_fresh,
-                                 FWMT = mu_noFWMT/mu_FWMT, 
-                                 ATU = mu_lowATU/mu_highATU, 
-                                 onset = mu_early_onset/mu_late_onset, 
-                                 duration = mu_long_dur/mu_short_dur)
+# fry_log_ratios <- data.frame(draw = 1:length(mu_FWMT), 
+#                                  freshet = log_rr(mu_fresh, mu_no_fresh),
+#                                  FWMT = log_rr(mu_FWMT, mu_noFWMT), 
+#                                  ATU = log_rr(mu_highATU, mu_lowATU), 
+#                                  onset = log_rr(mu_early_onset,mu_late_onset), 
+#                                  duration = log_rr(mu_long_dur, mu_short_dur))
+
+fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
+                                 freshet = perc_change(mu_no_fresh, mu_fresh),
+                                 FWMT = perc_change(mu_noFWMT, mu_FWMT), 
+                                 ATU = perc_change(mu_lowATU, mu_highATU), 
+                                 onset = perc_change(mu_early_onset,mu_late_onset), 
+                                 duration = perc_change(mu_long_dur, mu_short_dur))
+
+# fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
+#                          freshet = mu_fresh/mu_no_fresh,
+#                                  FWMT = mu_noFWMT/mu_FWMT, 
+#                                  ATU = mu_lowATU/mu_highATU, 
+#                                  onset = mu_early_onset/mu_late_onset, 
+#                                  duration = mu_long_dur/mu_short_dur)
 
 env_post$fry_abund_predict <- total_fry.df$total_fry
 env_post$onset_impute <- spread_draws(fit, thermal_onset_merge[y]) |> 
@@ -604,30 +623,34 @@ p1 <- FWMT_BH_summary.df |>
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")
 
 
-p3 <- fry_ratios %>%
-  rename("low high ATUs" = "ATU",
+p3 <- fry_percent_change %>%
+  rename("low incubation ATUs" = "ATU",
          "FWMT exceeded" = "FWMT",
-         "high pre-spawn flushing" = "freshet",
-        "early thermal barrier" =  "onset",
-         "residual thermal barrier duration" = "duration") |> 
-  gather(key = variable, value = ratio, -draw) %>% 
-  mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)]), pct_change = (ratio - 1) * 100) |>   # convert ratio to % change
+         "no vs. high pre-spawn flushing" = "freshet",
+          "early thermal barrier" =  "onset",
+         "short thermal barrier (resid.)" = "duration") |> 
+  gather(key = variable, value = pct_change, -draw) %>% 
+  mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)])) |>   
   ggplot(aes(x = variable, y = pct_change))+
   geom_hline(yintercept = 1, lty = 2)+
   stat_pointinterval(.width = CIs)+
   ylab("Change in per spawner fry production (%)")+
   xlab("")+
-  scale_x_discrete(labels = label_wrap(10))+
-  scale_y_continuous(limits = c(-100, 50), expand = c(0, 0))
+  scale_x_discrete(labels = label_wrap(10))#+
+  #scale_y_continuous(breaks = seq(-100, 25, by = 25))+
+  #coord_cartesian(ylim =  c(-78, 20), expand = c(0, 0))
 
 thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), max(dat_list$thermal_onset), length = 30)
 thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), max(env.df$onset, na.rm = TRUE), length = 30)
 
 thermal_onset.df <- data.frame()
+
+
 for(i in 1:30){
-alpha_sf <- exp(post$alpha0 + post$b_therm_onset * thermal_onsetV_scaled[i])
-hold <-(alpha_sf * exp(median(dat_list$spawner_ln_est)))/(1 + beta_sf * (exp(median(dat_list$spawner_ln_est))/1e05)^ post$theta_sf)
-thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold))
+  effective_spawners <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * thermal_onsetV_scaled[i])
+  alpha_sf <- exp(post$alpha0)
+  hold <-(alpha_sf * effective_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf)
+  thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold))
 }
 
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = fry))+
@@ -635,18 +658,18 @@ p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020
   labs(x = "Date of thermal barrier onset")+
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)", )+
   #scale_x_date(expand = c(0, 0))+
-  coord_cartesian(ylim = c(0, 5000), expand = FALSE)+
+  coord_cartesian(ylim = c(0, 3500), expand = FALSE)+
   scale_fill_brewer(palette = "Greys", guide = "none")
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
   plot_layout(height = c(1,0.8), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey). The lines contrast an early (Jun 27; yellow) and late (Jul 22; purple) thermal barrier scenarios, with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated proportional change (log axis) in fry production due to earliest (",thermal_barrier$onset_md[which(thermal_barrier$onset == min(thermal_barrier$onset))]
-,") vs. latest (",thermal_barrier$onset_md[which(thermal_barrier$onset == max(thermal_barrier$onset))],") thermal barrier onset, longest vs. shortest residual duration, FWMT exceeded vs. maintained, and lowest (", round(min(env.df$ATU)), "°C·d) vs. highest (",round(max(env.df$ATU)),"°C·d) observed ATUs during the incubation period. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
+fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey).  The lines contrast an early and late thermal barrier scenario (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; yellow; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],"; purple), with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
+,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low)), "°C·d) vs. high (",round(quantile(env.df$ATU, high)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
-Maintaining flows during the incubation-period within the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to increase fry abundance by `r round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))`--`r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT>0)*100)`% probability that the effect is positive.
+Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95% CI:`r -round(quantile(fry_percent_change$FWMT, 0.025))`--`r -round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative
 
 # Introduction
 Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of their southern range in North America [@rand2012; @grant2019], highlighting the urgent need for management measures that can boost survival and contribute to maintenance and recovery. In this context, the Okanagan sockeye represent a rare success story where targeted management measures have proven effective [@alexander2024], resulting in a twenty fold increase in spawner abundance since the early 2000s [@bailey2025]. However, because multiple management measures were implemented concurrently---habitat restoration, a hatchery restocking program, improved dam passage, managing dam outflows to ensure "fish-friendly flows"---and corresponded with changing environmental conditions, it has proven challenging to quantify the contribution of each intervention. Based on a weight of evidence approach, @alexander2024 concluded that these management interventions jointly contributed to the recovery, and amplified the positive effects of a 2007 shift towards more favourable coastal marine conditions. Still, quantitative estimates of how environmental conditions and individual management interventions impact productivity and survival are needed in order to ensure that limited conservation resources are used effectively, and to assess whether similar intervention could support recovery in other salmon populations. 
