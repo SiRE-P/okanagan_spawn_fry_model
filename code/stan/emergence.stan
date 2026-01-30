@@ -67,8 +67,11 @@ parameters {
   
   real<lower=0> freshet_threshold; 
 
-  real b_therm_onset;
-  real b_therm_dur;
+  real a_effective_spawners;
+  real b_therm_onset_raw;
+  real b_therm_dur_raw;
+  real<lower=0> thermal_barrier_transition_width_sd; 
+  
   real b_freshet;
   
   real a_volume;
@@ -97,7 +100,7 @@ parameters {
   vector[Y] day_peak_z;
   vector[Y] day_sd_z;
   
-  real<lower=0> emerg_phi;
+  real<lower=1> emerg_phi;
   
   //missing data
   vector<lower=0>[N_missing_volume] volume_impute;
@@ -122,7 +125,8 @@ transformed parameters{
   vector[Y] day_sd;
   vector[Y] fresh_days;
   vector[Y] fresh_days_scaled;
-
+  vector[Y] effective_spawners;
+  vector[Y] eff_spawner_prop;
   
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
@@ -130,6 +134,11 @@ transformed parameters{
   b_ATU * ATU +
   b_moonxATU * (new_moon_date .* ATU);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
+  
+  //effective spawner paramaters scaled to SD units of onset date
+  real slope_scale = 5.9 / thermal_barrier_transition_width_sd; //5.9 is the logit scale distance between 5% and 95%
+  real b_therm_onset = slope_scale * b_therm_onset_raw;
+  real b_therm_dur   = slope_scale * b_therm_dur_raw;
   
   //year specific alphas
   vector[Y] alpha_sf;
@@ -140,11 +149,13 @@ transformed parameters{
       fresh_days[y] += inv_logit(freshet_transition_slope * (freshet_flow[y, d] - freshet_threshold));
     }    
     
+    eff_spawner_prop[y] = inv_logit(a_effective_spawners + b_therm_onset * thermal_onset_merge[y] + b_therm_dur * thermal_dur_resid_merge[y]);
+    effective_spawners[y] = eff_spawner_prop[y] * spawners[y];
+    
     alpha_sf[y] = exp(alpha0
     + a_FWMT * exceeded_FWMT[y]
     + sf_ATU * ATU[y]
-    + b_therm_onset * thermal_onset_merge[y]
-    + b_therm_dur * thermal_dur_resid_merge[y]);
+    );
   }
     fresh_days_scaled = fresh_days/sd(fresh_days);
     beta_sf = exp(beta0 + b_freshet * fresh_days_scaled); // 57 = sd(rowSums(freshet_mat>28.5))
@@ -175,8 +186,10 @@ model {
 
   freshet_threshold ~ normal(freshet_threshold_prior_mu, freshet_threshold_prior_sigma);
 
-  b_therm_dur ~ normal(0, 0.5);
-  b_therm_onset ~ normal(0, 0.5);
+  a_effective_spawners ~ normal(0, 0.25); 
+  thermal_barrier_transition_width_sd ~ lognormal(log(2.5), 0.4);
+  b_therm_dur_raw ~ normal(0, 0.5);
+  b_therm_onset_raw ~ normal(0, 0.5);
   b_freshet ~ normal(0, 0.5);
   
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
@@ -193,7 +206,7 @@ model {
   
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){
-    real fry_mu_ln = log((alpha_sf[y] * spawners[y])/(1 + (beta_sf[y] * spawners[y]/1e5)^theta_sf));
+    real fry_mu_ln = log((alpha_sf[y] * effective_spawners[y])/(1 + (beta_sf[y] * spawners[y]/1e5)^theta_sf));
     total_fry_ln[y] ~ normal(fry_mu_ln, sigma_sf);
   }
   
@@ -218,7 +231,7 @@ model {
   day_peak_z ~ normal(0, 1);
   day_sd_z ~ normal(0, 1);
   
-  emerg_phi ~ exponential(1);
+  emerg_phi ~ lognormal(log(20),0.5);
   
   for(i in 1:N){
     real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
