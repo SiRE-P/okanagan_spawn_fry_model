@@ -53,6 +53,7 @@ library(ggnewscale)
 library(cmdstanr)
 library(tidybayes)
 library(posterior)
+library(bayesplot)
 library(SiREfunctions)
 
 options(mc.cores = parallel::detectCores())
@@ -350,7 +351,8 @@ fit <- run_or_load_model(
   threads_per_chain = 1,
   iter_sampling = 1000,
   iter_warmup = 1000,
-  seed = 123
+  seed = 123, 
+  adapt_delta = 0.99
 )
 
 worst_Rhat <- fit$summary() %>%
@@ -498,7 +500,7 @@ for(j in 0:1){
     effective_spawners <- spawnV[i] * plogis(post$a_effective_spawners + post$b_therm_onset * onset)
 
     total_fry = (alpha_sf * effective_spawners)/(1 + beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
-    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], effective_spawners = effective_spawners, FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(0.15, 0.85))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
+    FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], effective_spawners = effective_spawners, FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(low, high))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
   }
   }
 }
@@ -571,6 +573,7 @@ perc_change <- function(treatment, baseline){
 #                                  onset = log_rr(mu_early_onset,mu_late_onset), 
 #                                  duration = log_rr(mu_long_dur, mu_short_dur))
 
+
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
                                  freshet = perc_change(mu_no_fresh, mu_fresh),
                                  FWMT = perc_change(mu_noFWMT, mu_FWMT), 
@@ -639,6 +642,7 @@ p3 <- fry_percent_change %>%
   scale_x_discrete(labels = label_wrap(10))#+
   #scale_y_continuous(breaks = seq(-100, 25, by = 25))+
   #coord_cartesian(ylim =  c(-78, 20), expand = c(0, 0))
+
 
 thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), max(dat_list$thermal_onset), length = 30)
 thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), max(env.df$onset, na.rm = TRUE), length = 30)
