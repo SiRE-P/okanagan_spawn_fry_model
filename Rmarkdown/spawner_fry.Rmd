@@ -12,23 +12,35 @@ output:
       fig_caption: true
       keep_tex: false
       mathjax: default
+      latex_engine: xelatex
 csl: ../../../citation_resources/canadian-journal-of-fisheries-and-aquatic-sciences.csl
 bibliography: ../../../citation_resources/plt_library_new.bib
 always_allow_html: true
 link-citations: yes
+
 header-includes:
   - \usepackage[left]{lineno}
   - \linenumbers
   - \usepackage{setspace}
   - \doublespacing
-  - \usepackage{mathptmx}
-  - \newcommand{\beginsupplement}{
-    \setcounter{equation}{0}
-    \renewcommand{\theequation}{S.\arabic{equation}}
-    \setcounter{table}{0}  
-    \renewcommand{\thetable}{S\arabic{table}} 
-    \setcounter{figure}{0} 
-    \renewcommand{\thefigure}{S\arabic{figure}}}
+  - |
+    \newcommand{\beginsupplement}{
+      \setcounter{equation}{0}
+      \renewcommand{\theequation}{S.\arabic{equation}}
+      \setcounter{table}{0}
+      \renewcommand{\thetable}{S\arabic{table}}
+      \setcounter{figure}{0}
+      \renewcommand{\thefigure}{S\arabic{figure}}}
+  - \usepackage{fontspec}
+  - |
+    \setmainfont[
+      Path=fonts/,
+      Extension=.ttf,
+      UprightFont=Charis-Regular,
+      ItalicFont=Charis-Italic,
+      BoldFont=Charis-Bold,
+      BoldItalicFont=Charis-BoldItalic
+    ]{Charis}
 ---
 
 ```{r libraries, include = FALSE, warning=FALSE}
@@ -355,17 +367,17 @@ fit <- run_or_load_model(
   adapt_delta = 0.99
 )
 
-worst_Rhat <- fit$summary() %>%
-  as.data.frame() %>%
-  mutate(rhat = round(rhat, 3)) %>%
-  arrange(desc(rhat))
-
-worst_Rhat %>%
-  filter(ess_bulk > 3) %>%
-  ggplot(aes(x = ess_bulk, y = rhat)) +
-  geom_point() +
-  geom_hline(yintercept = 1.01, lty = 2) +
-  geom_vline(xintercept = 400, lty = 2)
+# worst_Rhat <- fit$summary() %>%
+#   as.data.frame() %>%
+#   mutate(rhat = round(rhat, 3)) %>%
+#   arrange(desc(rhat))
+# 
+# worst_Rhat %>%
+#   filter(ess_bulk > 3) %>%
+#   ggplot(aes(x = ess_bulk, y = rhat)) +
+#   geom_point() +
+#   geom_hline(yintercept = 1.01, lty = 2) +
+#   geom_vline(xintercept = 400, lty = 2)
 
 post <- as_draws_df(fit$draws())
 ```
@@ -680,26 +692,17 @@ Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of thei
 
 This study focuses on the spawner to fry component of the Okanagan sockeye lifecycle, with the goal of understanding how environmental factors and management interventions affect production at this stage. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. Productivity during this lifestage may be influenced by the number of spawning adults and their condition, the condition of the spawning grounds, and environmental conditions during egg incubation. 
 
-The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. 
+During the incubation period, high flows can scour the stream bed, potentially dislodging or burying eggs and alevin, while also increasing fine sediment infiltration, which in turn reduces oxygen supply [@devries1997; @ingram2011]. Conversely, if flows are low enough to expose the eggs to air, mortality can occur through desiccation or freezing [@casas-mulet2015]. While scouring flows during the incubation period can reduce survival, they may have beneficial effects if they occur at other times of year. Over time, fine sediments can accumulate in spawning habitat, filling the spaces between spawning gravels, and causing mortality by reducing dissolved oxygen and trapping emerging alevins [@moring1982]. High-velocity flows, such as those during freshet, can flush fine sediments from spawning gravel, and may be critical to maintaining productive spawning habitat [@reiser1989].
 
-Conditions experienced during upstream migration may also influence spawner-to-fry production by affecting the condition of fish when they reach the spawning grounds, in addition to any direct effects on abundance through mortality during migration [@fenkes2016]. Elevated river temperatures place considerable stress on migrating sockeye; higher temperatures increase energy use [@rand2006], promote pathogen development [@crossin2008], and reduce aerobic scope [@eliason2011]. This results in reduced migration survival when temperatures exceed 18 $^circ$C [@martins2012], particularly for females [@crossin2008; @martins2012a]. However, there is also evidence that high temperatures encountered during migration can lead to egg-retention [@quinn2007], failure to spawn before dying [@gilhousen1990], and reduced egg-to-fry survival [@patterson2004]. 
-
-There is, however, variation among populations in their thermal tolerance that correspond with the historic river temperatures that they have experienced [@martins2011; @eliason2011]. 
-
-Okanagan sockeye begin their 830 km migrating up the mainsteam of the Columbia River in mid June, passing by nine hydroelectric dams and reaching the confluence of the Okanogan River by late June or early July. From there, they migrate an additional 185 km up the Okanogan River reaching their spawning grounds above Osoyoos lake. Summer temperatures in the Okanogan River routinely become hot enough to block migration, forcing fish to hold in Lake Pateros at the confluence of the Columbia River and resulting in considerable en-route mortality [@hyatt2020]. 
-
-
-
-
-
-
-one of these interventions: the regulation of dam flows in the Okanagan River to maintain suitable conditions during egg incubation, reducing the risk of scouring from high flows and desiccation from low flows. Sockeye salmon spawn in autumn when they lay their eggs in pockets (i.e., redds) in the gravel of streams, and these eggs incubate over the winter, hatching into alevins, before emerging as fry in the spring [@wilson2025]. During this period, high flows can scour the stream bed, potentially dislodging or burying eggs and alevin, while also increasing fine sediment infiltration, which in turn reduces oxygen supply [@devries1997; @ingram2011]. The degree to which scour reduces survival is assumed to be a sigmoidal function of the depth reached by scour, which increases with flow velocity [@glawdel2011]. Sockeye redds tend to be buried at depths between 10 and 25 cm below the stream bed [@devries1997] and survival is determined by the proportion of the eggs that are impacted by scour. Likewise, if flows are low enough to expose the eggs to air, mortality can occur through desiccation or freezing [@casas-mulet2015]. 
-
-While scouring flows during the incubation period can reduce survival, they may have beneficial effects if they occur at other times of year. Over time, fine sediments can accumulate in spawning habitat, filling the spaces between spawning gravels, and causing mortality by reducing dissolved oxygen and trapping emerging alevins [@moring1982]. High-velocity flows, such as those during freshet, can flush fine sediments from spawning gravel, and may be critical to maintaining productive spawning habitat [@reiser1989].
-
-While desiccation, scour, and sediment flushing occur naturally, they are directly influenced by dam-influenced flow regulation, as is the case in the Okanagan River. Because of this, the Okanagan Basin Implementation Board adopted seasonally varying target flows in 1976, to ensure that flow is suitable for each life stage of salmon in the river [@okanaganbasinimplementationboard1982], but challenges associated with balancing flood mitigation as well as uncertainty in real-time conditions resulted in flows frequently exceeding or falling below this range [@ng2025]. To address this issue, the Fish/Water Management Tool (FWMT) was developed as a decision support tool that provides real-time predictions of the consequences of water management decisions for fish and other users [@hyatt2015]. Since its implementation in 2004, there have been fewer days where flows fell below or exceeded the target flow range [@ng2025; @alexander2024]. 
+While desiccation, scour, and sediment flushing occur naturally, they are directly influenced by dam-influenced flow regulation, as is the case in the Okanagan River. Because of this, the Okanagan Basin Implementation Board adopted seasonally varying target flows in 1976, to ensure that flow is suitable for each life stage of salmon in the river [@okanaganbasinimplementationboard1982], but challenges associated with balancing flood mitigation as well as uncertainty in real-time conditions resulted in flows frequently exceeding or falling below this range [@ng2025]. To address this issue, the Fish/Water Management Tool (FWMT) was developed as a decision support tool that provides real-time predictions of the consequences of water management decisions for fish and other users [@hyatt2015]. Since its implementation in 2004, there have been fewer days where flows fell below or exceeded the target flow range [@ng2025; @alexander2024].
 
 It has been assumed that improved flow compliance has reduced scour and desiccation, and thus improved egg to fry survival. However, quantifying this benefit is challenging due to limited fry abundance data prior to FWMT implementation. @ng2025 found that emerging fry recruitment (i.e., fry per spawner) was higher in the 19 years after the FWMT was implemented, compared to the three years prior. Similarly, @alexander2024 found a two-fold increase in the ratio of pre-smolts (i.e., in-lake fry in the fall and winter following emergence) to spawners after brood year 2008 (four years post FWMT implementation) and concluded that FWMT was a strong contributing factor to the sockeye recovery. However, despite this, neither study was able to establish a causal link between fry recruitment and interannual variation in flow rates.
+
+Conditions experienced during upstream migration may also influence spawner-to-fry production by affecting the condition of fish when they reach the spawning grounds, in addition to any direct effects on abundance through mortality during migration [@fenkes2016]. Elevated river temperatures place considerable stress on migrating sockeye; higher temperatures increase energy use [@rand2006], promote pathogen development [@crossin2008], and reduce aerobic scope [@eliason2011]. This results in reduced migration survival when temperatures exceed 18$^{\circ}$C [@martins2012], particularly for females [@crossin2008; @martins2012a]. There is also evidence that high temperatures encountered during migration can lead to egg-retention [@quinn2007], reduced egg-to-fry survival [@patterson2004], even when spawners are able to reach the spawning grounds. 
+
+Okanagan sockeye begin their 830 km migrating up the mainsteam of the Columbia River in mid June, passing by nine hydroelectric dams and reaching the confluence of the Okanogan River by late June or early July. From there, they migrate an additional 185 km up the Okanogan River reaching their spawning grounds above Osoyoos lake. Summer temperatures in the Okanogan River routinely become hot enough to block migration, forcing fish to hold in Lake Pateros at the confluence of the Columbia River and resulting in considerable thermal stress [@miller-saunders2024] and en-route mortality [@hyatt2020]. Observations of broodstock collected by the Okanagan Nation Alliance `r paste0("kł c", "p", "\u0313", "\u0259", "l", "k", "\u0313", " stim", "\u0313")` hatchery indicate that fish that were forced to hold in Lake Pateros for an extended period produced fewer eggs compared to fish that were transported past the barrier and held in cooler water hatchery waters (pers. comm. D. Stefanovic and T. Marsel), despite documented negative effects of maternal hatchery holding on egg size [@sopinka2016]. It is therefore plausible that the timing and duration of the thermal barrier may impact the productivity of the fish that survive to reach the spawning grounds. 
+
+<!-- The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000].  -->
 
 <!-- Add review of temperature effects Beacham et al. 1990-->
 
