@@ -18,21 +18,23 @@ bibliography: ../../../citation_resources/plt_library_new.bib
 always_allow_html: true
 link-citations: yes
 
+classoption:
+  - leqno
+
 header-includes:
-  - \usepackage[left]{lineno}
-  - \linenumbers
-  - \usepackage{setspace}
-  - \doublespacing
   - |
-    \newcommand{\beginsupplement}{
-      \setcounter{equation}{0}
-      \renewcommand{\theequation}{S.\arabic{equation}}
-      \setcounter{table}{0}
-      \renewcommand{\thetable}{S\arabic{table}}
-      \setcounter{figure}{0}
-      \renewcommand{\thefigure}{S\arabic{figure}}}
-  - \usepackage{fontspec}
+    \usepackage[left]{lineno}
+    \linenumbers
+
   - |
+    \usepackage{setspace}
+    \doublespacing
+
+  - |
+    \usepackage{amsmath}
+
+  - |
+    \usepackage{fontspec}
     \setmainfont[
       Path=fonts/,
       Extension=.ttf,
@@ -41,6 +43,42 @@ header-includes:
       BoldFont=Charis-Bold,
       BoldItalicFont=Charis-BoldItalic
     ]{Charis}
+
+  - |
+    \usepackage{unicode-math}
+    \setmathfont{TeX Gyre Termes Math}
+
+  - |
+    \usepackage{placeins}
+
+  - |
+    \usepackage{etoolbox}
+    \AtBeginEnvironment{equation}{\linenomath}
+    \AtEndEnvironment{equation}{\endlinenomath}
+    \AtBeginEnvironment{equation*}{\linenomath}
+    \AtEndEnvironment{equation*}{\endlinenomath}
+    \AtBeginEnvironment{align}{\linenomath}
+    \AtEndEnvironment{align}{\endlinenomath}
+    \AtBeginEnvironment{align*}{\linenomath}
+    \AtEndEnvironment{align*}{\endlinenomath}
+    \AtBeginEnvironment{gather}{\linenomath}
+    \AtEndEnvironment{gather}{\endlinenomath}
+    \AtBeginEnvironment{gather*}{\linenomath}
+    \AtEndEnvironment{gather*}{\endlinenomath}
+    \AtBeginEnvironment{multline}{\linenomath}
+    \AtEndEnvironment{multline}{\endlinenomath}
+    \AtBeginEnvironment{multline*}{\linenomath}
+    \AtEndEnvironment{multline*}{\endlinenomath}
+
+  - |
+    \newcommand{\beginsupplement}{
+      \setcounter{equation}{0}
+      \renewcommand{\theequation}{S.\arabic{equation}}
+      \setcounter{table}{0}
+      \renewcommand{\thetable}{S\arabic{table}}
+      \setcounter{figure}{0}
+      \renewcommand{\thefigure}{S\arabic{figure}}
+    }
 ---
 
 ```{r libraries, include = FALSE, warning=FALSE}
@@ -639,7 +677,7 @@ p1 <- FWMT_BH_summary.df |>
 p3 <- fry_percent_change %>%
   rename("low incubation ATUs" = "ATU",
          "FWMT exceeded" = "FWMT",
-         "no vs. high pre-spawn flushing" = "freshet",
+         "low pre-spawn flushing" = "freshet",
           "early thermal barrier" =  "onset",
          "short thermal barrier (resid.)" = "duration") |> 
   gather(key = variable, value = pct_change, -draw) %>% 
@@ -683,7 +721,11 @@ fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between sp
 ,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low)), "°C·d) vs. high (",round(quantile(env.df$ATU, high)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
-Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))` -- `r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative
+Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))` -- `r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
+
+\noindent\textbf{Keywords:} salmon; Oncorhynchus; spawner; fry; temperature; flow; incubation; Osoyoos Lake; Okanagan River; Columbia River
+
+\newpage
 
 # Introduction
 Sockeye salmon *Oncorhynchus nerka* populations are in decline over much of their southern range in North America [@rand2012; @grant2019], highlighting the urgent need for management measures that can boost survival and contribute to maintenance and recovery. In this context, the Okanagan sockeye represent a rare success story where targeted management measures have proven effective [@alexander2024], resulting in a twentyfold increase in spawner abundance since the early 2000s [@bailey2025]. However, because multiple management measures were implemented concurrently---habitat restoration, a hatchery restocking program, improved dam passage, managing dam outflows to ensure "fish-friendly flows"---and corresponded with changing environmental conditions, it has proven challenging to quantify the contribution of each intervention. Based on a weight of evidence approach, @alexander2024 concluded that these management interventions jointly contributed to the recovery, and amplified the positive effects of a 2007 shift towards more favourable coastal marine conditions. Still, quantitative estimates of how environmental conditions and individual management interventions impact productivity and survival are needed in order to ensure that limited conservation resources are used effectively, and to assess whether similar interventions could support recovery in other salmon populations. 
@@ -795,7 +837,29 @@ where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are
 We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
 
 
+# Results
 
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8, fig.cap= fig_fry_emerge_cap}
+fig_fry_emerge
+```
+
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=10, fig.cap=fig_spawn_fry_cap}
+fig_spawn_fry
+```
+
+# Discussion
+
+# Acknowledgements
+
+
+\FloatBarrier
+# References
+
+\clearpage
+\beginsupplement
+
+\FloatBarrier
+# Supplementary Materials
 <!-- switch to map that includes vertical drop structures -->
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
@@ -850,19 +914,3 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
   coord_cartesian(xlim = c(0.3, 0.95))+
   theme_dag()
 ```
-
-# Results
-
-```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8, fig.cap= fig_fry_emerge_cap}
-fig_fry_emerge
-```
-
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=10, fig.cap=fig_spawn_fry_cap}
-fig_spawn_fry
-```
-
-# Discussion
-
-# Acknowledgements
-
-# References
