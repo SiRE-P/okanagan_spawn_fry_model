@@ -436,7 +436,7 @@ fit <- run_or_load_model(
   threads_per_chain = 1,
   iter_sampling = 1000,
   iter_warmup = 1000,
-  seed = 123, 
+  seed = 7, 
   adapt_delta = 0.99
 )
 
@@ -635,9 +635,9 @@ mu_FWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$the
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
 mu_noFWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(env.df$ATU, low, na.rm = TRUE))
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU[dat_list$ATU>-999], low, na.rm = TRUE))
 mu_lowATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(env.df$ATU, high, na.rm = TRUE))
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU[dat_list$ATU>-999], high, na.rm = TRUE))
 mu_highATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
 eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], low))
@@ -724,7 +724,7 @@ p3 <- fry_percent_change %>%
   gather(key = variable, value = pct_change, -draw) %>% 
   mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)])) |>   
   ggplot(aes(x = variable, y = pct_change))+
-  geom_hline(yintercept = 1, lty = 2)+
+  geom_hline(yintercept = 0, lty = 2)+
   stat_pointinterval(.width = CIs)+
   ylab("Change in per spawner fry production (%)")+
   xlab("")+
