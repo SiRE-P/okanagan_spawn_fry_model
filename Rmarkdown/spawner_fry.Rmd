@@ -1,5 +1,5 @@
 ---
-title: "Temperature and flow impacts on spawner-to-fry productivity in Okanagan sockeye"
+title: "Temperature and flow impacts on spawner-to-fry productivity in Okanagan sockeye salmon"
 author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca],  Karilyn Alex$^2$, Howard Stiff$^3$, Athena Ogden$^3$\n|\n|
   $^1$Pacific Science Enterprise Centre, Fisheries and Oceans Canada, West Vancouver, B.C., Canada\n|
   $^2$Okanagan Nation Alliance, Westbank, B.C., Canada\n|
@@ -46,7 +46,6 @@ header-includes:
 
   - |
     \usepackage{unicode-math}
-    \setmathfont{TeX Gyre Termes Math}
 
   - |
     \usepackage{placeins}
@@ -93,6 +92,7 @@ library(tidyverse)
 library(janitor)
 library(lunar)
 library(suncalc)
+library(rnoaa)
 library(patchwork)
 library(ggrepel)
 library(scales)
@@ -131,7 +131,7 @@ emergence$time_set_numeric <- with(emergence, {
 emergence <- emergence %>% mutate(volume_m3 = ifelse(volume_m3<0, NA, volume_m3),
                                   mean_nightly_discharge_cms = ifelse(mean_nightly_discharge_cms>100, NA, mean_nightly_discharge_cms)) %>% 
   mutate(total_catch = as.integer(total_catch)) |> 
-  filter(sample_year>2002) #come back to this later - we have earlier data
+  filter(sample_year>2002) #2002 was the first year of sampling and methods were not yet worked out
 
 new_moons <- data.frame()
 for(i in 1:length(unique(emergence$sample_year))){
@@ -204,6 +204,8 @@ incubation_end <- format(incubation_end_full, "%B ") %>%
   paste0(as.integer(format(incubation_end_full, "%d")))
 
 ATU.df <- temp_means %>% 
+  mutate(yday = yday(date)) |> 
+  filter(yday <= yday(incubation_end_full) | yday > yday(incubation_start_full)) |> 
   mutate(year_start = if_else(format(date, "%m-%d") >= format(incubation_start_full, "%m-%d"),
                               year(date),
                               year(date) - 1)) %>% 
@@ -342,6 +344,35 @@ ggplot(thermal_barrier, aes(x = year, y = duration))+
 
 env.df <- env.df %>% 
   left_join(thermal_barrier |> select(-year), by = c("year" = "fry_year"))
+
+#get air temperatures near Malott for imputation
+malott_air <- meteo_pull_monitors(
+  monitors = "USW00094197",
+  date_min = as.Date(paste(min(env.df$year)-1,06,01,sep = "-"), format = "%Y-%m-%d"),
+  date_max = as.Date(paste(max(env.df$year),08,30,sep = "-"), format = "%Y-%m-%d"),
+  var = c("TMAX","TMIN")
+)
+
+malott_air <- malott_air |> 
+  mutate(air_mean = ((tmax + tmin)/2)/10) |> 
+  mutate(month = month(date), year = year(date), yday = yday(date))
+
+
+malott_june_air <- malott_air |> filter(month == 6) |>
+  filter(!is.na(air_mean)) |> 
+  group_by(year) |> 
+  summarise(june_malott_air = mean(air_mean)) |> 
+  mutate(fry_year = year+1)
+
+left_join(thermal_barrier, malott_june_air) |> 
+ggplot(aes(x = june_malott_air, y = onset - min(onset)+1))+
+  geom_point()+
+  geom_text_repel(aes(label = year))+
+  geom_smooth(method = 'lm')+
+  scale_y_log10()
+
+env.df <- env.df %>% 
+  left_join(malott_june_air |> select(-year), by = c("year" = "fry_year"))
 ```
 
 ```{r stan, include = FALSE}
@@ -361,7 +392,7 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  day = emergence_select$yday - min(emergence_select$yday) + 1,
                  hour = stand(emergence_select$time_set_numeric),
                  new_moon_date = stand(env.df$new_moon_yday),
-                 ATU = stand(env.df$ATU),
+                 
                  dusk = stand(emergence_select$dusk), 
                  exceeded_FWMT = as.numeric(env.df$non_range_days>0),
                  testalinden = ifelse(env.df$year == 2011, 1, 0),
@@ -369,10 +400,16 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  spawner_ln_est = env.df$spawners_ln_est,
                  spawner_ln_sd = env.df$spawner_ln_sd,
                  
+                 N_missing_ATU = sum(is.na(env.df$ATU)),
+                 ATU_missidx = which(is.na(env.df$ATU)),
+                 ATU = ifelse(!is.na(env.df$ATU), stand(env.df$ATU), -999),
+                 
                  N_missing_thermal = sum(is.na(env.df$onset)),
                  thermal_missidx = which(is.na(env.df$onset)),
                  thermal_onset = ifelse(!is.na(env.df$onset), stand(env.df$onset), -999),
                  thermal_dur_resid = ifelse(!is.na(env.df$duration_resid), env.df$duration_resid/sd(env.df$duration_resid, na.rm = TRUE), -999),
+                 
+                 malott_june_air = stand(env.df$june_malott_air),
                  
                  freshet_days = ncol(freshet_mat),
                  freshet_flow = freshet_mat,
@@ -562,12 +599,20 @@ FWMT_BH_summary.df<- FWMT_BH.df %>%
             total_fry = median(total_fry)) |> 
   mutate(onset = as.Date(onset - 1, origin = "2020-01-01"))
 
-fry_summary <- spread_draws(fit, total_fry_ln[year]) %>% 
+onset_merged <- spread_draws(fit, thermal_onset_merge[year]) |> 
+  mutate(year = init_year + year) %>% 
+  group_by(year) |> 
+  summarise(onset_scaled = median(thermal_onset_merge)) |> 
+  mutate(onset = round(onset_scaled * sd(env.df$onset, na.rm = TRUE) + mean(env.df$onset, na.rm = TRUE))) |> 
+  mutate(onset = as.Date(onset - 1, origin = "2020-01-01"))
+  
+  
+fry_summary <- spread_draws(fit, total_fry_ln[year], ) %>% 
   mutate(year = init_year + year) %>% 
   left_join(env_post %>% 
               mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")) %>% 
-              select(year, FWMT_range, spawners, onset)) |> 
-  mutate(onset = as.Date(onset - 1, origin = "2020-01-01")) |> 
+              select(year, FWMT_range, spawners)) |> 
+  left_join(onset_merged) |> 
   mutate(total_fry = exp(total_fry_ln)) |> 
   group_by(spawners, FWMT_range, year, onset) |> 
   summarise(l95 = quantile(total_fry, probs = 0.025), 
@@ -590,9 +635,9 @@ mu_FWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$the
 alpha_sf <- exp(post$alpha0 + post$a_FWMT * 1)
 mu_noFWMT <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU, low))
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(env.df$ATU, low, na.rm = TRUE))
 mu_lowATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
-alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU, high))
+alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(env.df$ATU, high, na.rm = TRUE))
 mu_highATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
 eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], low))
@@ -651,12 +696,8 @@ p1 <- FWMT_BH_summary.df |>
   geom_point(data = fry_summary, size = 4, aes(color = onset), pch =  19)+
   scale_color_viridis_c(option = "C", direction = -1, begin = 0.1, end = 0.9,
                         labels = function(x) format(as.Date(x, origin = "1970-01-01"), "%b %d"),
-                        limits = range(fry_summary$onset), name = "Thermal\nbarrier\nonset"
+                        name = "Thermal\nbarrier\nonset"
   )+
-  # scale_fill_viridis_c(option = "C", direction = -1, begin = 0.1, end = 0.9,
-  #                      labels = function(x) format(as.Date(x, origin = "1970-01-01"), "%b %d"),
-  #                      limits = range(fry_summary$onset), name = "Thermal\nbarrier\nonset"
-  # )+
   new_scale_color() +
     geom_text_repel(
     data = env_post %>% mutate(FWMT_range = ifelse(non_range_days == 0, "within", "outside")),
@@ -718,10 +759,12 @@ fig_spawn_fry <- p1 / (p0 + p3) +
   plot_annotation(tag_levels = "A")
 
 fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey).  The lines contrast an early and late thermal barrier scenario (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; yellow; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],"; purple), with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
-,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low)), "°C·d) vs. high (",round(quantile(env.df$ATU, high)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
+,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
-Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95% CI:`r round(quantile(fry_percent_change$FWMT, 0.025))` -- `r round(quantile(fry_percent_change$FWMT, 0.975))`%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
+Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% 
+(95\% CI: `r round(quantile(fry_percent_change$FWMT,0.025))`\% to
+`r round(quantile(fry_percent_change$FWMT,0.975))`\%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
 
 \noindent\textbf{Keywords:} salmon; Oncorhynchus; spawner; fry; temperature; flow; incubation; Osoyoos Lake; Okanagan River; Columbia River
 
@@ -759,7 +802,7 @@ Here we present a process-based Bayesian model that estimates how flow velocity 
 Spawner enumeration surveys in the Index section of the Okanagan River, between Osoyoos and Vaseux lakes (Figure \ref{fig:map}), are conducted during the spawning period between the end of August and the end of November. Details of this survey are described in detail in @machin2019. In these surveys, all sockeye on the spawning grounds are counted visually and the surveys are repeated weekly during the initial migration phase and every three days during the peak spawning period. Estimating total spawner abundance from these data requires accounting for observation error and the fact that fish remain on the spawning grounds for multiple days and so individuals are counted multiple times. Here we use the model presented in @thompsoninreview, which is a hierarchical Bayesian model that estimates the processes of arrival, and exit to the spawning ground in each year. This provides estimates of total spawner abundance with uncertainty. For the purposes of this analysis, we use the estimated mean and standard deviation of log spawner abundance from @thompsoninreview from `r min(emergence_select$sample_year)-1` to `r max(emergence_select$sample_year)-1` as data inputs to our model (described in a subsequent section).
 
 ### Fry emergence
-The ONA has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
+The Okanagan Nation Alliance (ONA) has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
 
 Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
 
@@ -854,11 +897,13 @@ fig_spawn_fry
 
 \FloatBarrier
 # References
+::: {#refs}
+:::
 
-\clearpage
-\beginsupplement
 
 \FloatBarrier
+\beginsupplement
+
 # Supplementary Materials
 <!-- switch to map that includes vertical drop structures -->
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}

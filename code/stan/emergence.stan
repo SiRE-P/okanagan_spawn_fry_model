@@ -26,17 +26,22 @@ data {
   vector[N] hour; //hour set started - standardized 
   array[N] int day; //observation day index
   vector[Y] new_moon_date; //date of the new moon, standardized
-  vector[Y] ATU; //ATUs on day 100
   vector[N] dusk; //dusk on day of observation
   array[Y] int exceeded_FWMT; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
   
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
   
+  int N_missing_ATU;
+  array[N_missing_ATU] int ATU_missidx;
+  vector[Y] ATU; //ATUs on day 100
+  
   int N_missing_thermal;
   array[N_missing_thermal] int thermal_missidx;
   vector[Y] thermal_onset;
   vector[Y] thermal_dur_resid;
+  
+  vector[Y] malott_june_air;
   
   vector[D] day_std; //sequence of all days to be predicted
   
@@ -72,6 +77,10 @@ parameters {
   real b_therm_dur_raw;
   real<lower=0> thermal_barrier_transition_width_sd; 
   
+  real a_onset;
+  real b_air_onset;
+  real<lower=0> onset_sigma;
+  
   real b_freshet;
   
   real a_volume;
@@ -104,6 +113,7 @@ parameters {
   
   //missing data
   vector<lower=0>[N_missing_volume] volume_impute;
+  vector[N_missing_ATU] ATU_impute;
   vector[N_missing_thermal] thermal_onset_impute;
   vector[N_missing_thermal] thermal_dur_resid_impute;
 }
@@ -111,6 +121,9 @@ transformed parameters{
   //missing variables
   vector[N] volume_merge;
   volume_merge = merge_missing(volume_missidx, to_vector(volume), volume_impute);
+
+  vector[Y] ATU_merge;
+  ATU_merge = merge_missing(ATU_missidx, to_vector(ATU), ATU_impute);
 
   vector[Y] thermal_onset_merge;
   thermal_onset_merge = merge_missing(thermal_missidx, to_vector(thermal_onset), thermal_onset_impute);
@@ -131,8 +144,8 @@ transformed parameters{
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
   b_moon * new_moon_date + 
-  b_ATU * ATU +
-  b_moonxATU * (new_moon_date .* ATU);
+  b_ATU * ATU_merge +
+  b_moonxATU * (new_moon_date .* ATU_merge);
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
   
   //effective spawner paramaters scaled to SD units of onset date
@@ -175,6 +188,8 @@ transformed parameters{
 }
 
 model {
+  ATU_impute ~ std_normal();
+  
   //spawner fry beverton-holt
   
   alpha0 ~ normal(alpha_sf_prior, alpha_sf_sigma_prior);
@@ -195,7 +210,12 @@ model {
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
   
   thermal_dur_resid_impute ~  std_normal();
-  thermal_onset_impute ~ std_normal();
+  //thermal_onset_impute ~ std_normal();
+  a_onset ~ normal(0, 0.1);
+  b_air_onset ~ normal(-0.5, 0.5);
+  onset_sigma ~ exponential(1);
+  thermal_onset_merge ~ normal(a_onset + b_air_onset * malott_june_air, onset_sigma);
+  
   
   a_volume ~ normal(0,2);
   soak_b ~ normal(1, 0.5);
