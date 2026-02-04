@@ -795,18 +795,14 @@ Here we present a process-based Bayesian model that estimates how flow velocity 
 
 # Methods 
 ## Study system
-
-
 ### Salmon enumeration
 ### Spawners
-Spawner enumeration surveys in the Index section of the Okanagan River, between Osoyoos and Vaseux lakes (Figure \ref{fig:map}), are conducted during the spawning period between the end of August and the end of November. Details of this survey are described in detail in @machin2019. In these surveys, all sockeye on the spawning grounds are counted visually and the surveys are repeated weekly during the initial migration phase and every three days during the peak spawning period. Estimating total spawner abundance from these data requires accounting for observation error and the fact that fish remain on the spawning grounds for multiple days and so individuals are counted multiple times. Here we use the model presented in @thompsoninreview, which is a hierarchical Bayesian model that estimates the processes of arrival, and exit to the spawning ground in each year. This provides estimates of total spawner abundance with uncertainty. For the purposes of this analysis, we use the estimated mean and standard deviation of log spawner abundance from @thompsoninreview from `r min(emergence_select$sample_year)-1` to `r max(emergence_select$sample_year)-1` as data inputs to our model (described in a subsequent section).
+Spawner abundance was estimated using a previously published Bayesian model fit to spawner enumeration surveys conducted by the Okanagan Nation Alliance (ONA) in the Okanagan River Index section between Osoyoos and Vaseux lakes [Figure \ref{fig:map}\; @thompsoninreview]. That model accounts for observation error and repeated counts of individuals on the spawning grounds producing annual posterior distributions of total spawner abundance. For the present analysis, we used the posterior mean and standard deviation of log spawner abundance as inputs to the spawner-to-fry recruitment model (described subsequently), thereby propagating uncertainty from the spawner estimation process.
 
 ### Fry emergence
-The Okanagan Nation Alliance (ONA) has conducted fry emergence surveys from March to May of each year since `r min(emergence_select$sample_year)`. Sampling occurs roughly once per week starting in early March to capture the beginning of the emergence period, then switches to every three or four days once emerging fry abundance begins to increase, and decreases to every five to eight days once peak emergence is over. 
+The ONA has conducted fry emergence surveys in the Okanagan River each spring (March–May) since `r min(emergence_select$sample_year)`; trial sampling in 2002 was excluded because methods were not standardized. Sampling occurs approximately weekly early in the emergence period and increases to every 3–4 days during peak emergence, with reduced frequency thereafter.
 
-Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5-mm stretch mesh; 2-m length; 3-in cod end) deployed in the Okanagan River at Vertical Drop Structure 13 (Figure \ref{fig:map}). Sampling typically consists of four sets, starting on the hour between 21:00 and midnight, each with a 15-minute soak time. When issues arise due to debris accumulation, exceptionally high fish abundance, or flow, soak times are often reduced, but more sets are deployed, with the goal of obtaining a total soak time of one hour across all sets. Even so, there is additional variation in soak time and set timing, particularly in early years. Therefore, our analysis only includes sets with soak times between 5 and 20 minutes that occurred between 8 PM and 1 AM. This includes `r nrow(emergence_select)` sets over `r length(unique(emergence_select$date))` days, spanning `r length(unique(emergence_select$sample_year))` years from `r min(emergence_select$sample_year)` to `r max(emergence_select$sample_year)`. The total number of fry captured in each set is recorded, and since 2008, a flow meter has been used to estimate the volume of water sampled. 
-
-<!-- add explanation for how we impute missing volume sampled -->
+Emerging fry are sampled at Vertical Drop Structure 13 (Figure \ref{fig:map}) using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 20:00 and 01:00 with soak times between 5 and 20 minutes.  
 
 ## Environmental covariates
 ### Upstream migration thermal barrier
@@ -814,12 +810,114 @@ We define the thermal barrier period as the days between June 25 and September 3
 
 The onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. Duration is strongly negatively correlated with onset date (*r* = `r round(cor(thermal_barrier$onset, thermal_barrier$duration), 2)`), reflecting the fact that duration is likely to be longer when onset is early. To separate these effects, we used residual duration, from a linear model of duration as a function of onset date, which represents whether the barrier lasted longer or shorter than expected for its onset.
 
-
 ### Incubation period flow and temperature
-We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether all daily flow rates are within the FWMT target incubation range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs), which are the cumulative sum of temperatures in degrees Celcius. 
+We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
+
+### Pre-spawn flushing flows
+We characterized interannual variation in pre-spawn flushing conditions using daily discharge in the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January–September preceding the spawning period (Figure X). Because the flow level at which flushing effects occur is uncertain, we estimated the threshold and the index of flushing within our Bayesian spawner-to-fry recruitment model (described subsequently).
 
 ## Directed acyclic graph and overall model structure
-The assumed causal pathways are presented in our directed acyclic graph (DAG; Figure \@ref(fig:DAG)), and the structure of this DAG is replicated in our model, which we describe in detail in the subsequent sections. This model consists of multiple submodels combined in a joint likelihood in Stan [@stan2024], fit in R v`r getRversion()` [@rcoreteam2024] via the cmdstanr package [@gabry2024].
+The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG; Figure @ref(fig:DAG)), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024].
+
+```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red)."}
+
+dag <- dagitty('dag {
+bb="0,0,1,1"
+"Okanagan river temperature (migration period)" [pos="0.463,0.036"]
+"hour of peak emergence" [pos="0.622,0.669"]
+"density dependence" [pos="0.288,0.378"]
+"dusk time" [pos="0.629,0.509"]
+"effective spawners" [pos="0.465,0.288"]
+"day of peak emergence" [pos="0.332,0.739"]
+"hour sampled" [pos="0.515,0.670"]
+"incubation ATU" [pos="0.100,0.665"]
+"new moon date" [pos="0.190,0.803"]
+"pre-spawn flushing" [pos="0.112,0.348"]
+"river flow during sampling" [pos="0.831,0.510"]
+"soak time" [pos="0.725,0.508"]
+"thermal barrier duration (residual)" [pos="0.537,0.139"]
+"thermal barrier onset" [pos="0.381,0.133"]
+"volume sampled" [pos="0.733,0.669"]
+FWMT_exceedance [pos="0.108,0.508"]
+emergence_sd [pos="0.300,0.882"]
+n_fry_day [pos="0.463,0.830"]
+n_fry_set [pos="0.590,0.851"]
+n_fry_total [pos="0.466,0.548"]
+n_spawners [pos="0.158,0.215"]
+"Okanagan river temperature (migration period)" -> "thermal barrier duration (residual)"
+"Okanagan river temperature (migration period)" -> "thermal barrier onset"
+"hour of peak emergence" -> n_fry_set
+"density dependence" -> n_fry_total
+"dusk time" -> "hour of peak emergence"
+"effective spawners" -> n_fry_total
+"day of peak emergence" -> n_fry_day
+"hour sampled" -> n_fry_set
+"incubation ATU" -> "day of peak emergence"
+"incubation ATU" -> n_fry_total
+"new moon date" -> "day of peak emergence"
+"pre-spawn flushing" -> "density dependence"
+"river flow during sampling" -> "volume sampled"
+"soak time" -> "volume sampled"
+"thermal barrier duration (residual)" -> "effective spawners"
+"thermal barrier onset" -> "effective spawners"
+"volume sampled" -> n_fry_set
+FWMT_exceedance -> n_fry_total
+emergence_sd -> n_fry_day
+n_fry_day -> n_fry_set
+n_fry_total -> n_fry_day
+n_spawners -> "density dependence"
+n_spawners -> "effective spawners"
+}
+
+')
+
+dag_df <- tidy_dagitty(dag) %>%
+  mutate(type = case_when(
+    # Observed response (data)
+    name %in% c("n_fry_set") ~ "observed response",
+    
+    # Latent states / process components
+    name %in% c("n_fry_total", "n_fry_day",
+                "effective spawners", "density dependence",
+                "day of peak emergence", "emergence_sd",
+                "hour of peak emergence") ~ "latent / process",
+    
+    # Environmental / biological drivers (observed covariates)
+    name %in% c("n_spawners",
+                "incubation ATU", "FWMT_exceedance",
+                "pre-spawn flushing",
+                "thermal barrier onset",
+                "thermal barrier duration (residual)",
+                "new moon date",
+                "Okanagan river temperature (migration period)") ~ "environmental driver",
+    
+    # Observation / sampling effort variables
+    name %in% c("hour sampled", "dusk time",
+                "volume sampled", "soak time",
+                "river flow during sampling") ~ "sampling / observation",
+    
+    TRUE ~ "other"
+  ))
+
+my_colors <- c(
+  "observed response"      = "#d62728",  # red
+  "latent / process"       = "#9467bd",  # purple
+  "environmental driver"   = "#1f77b4",  # blue
+  "sampling / observation" = "#7f7f7f",  # grey
+  "other"                  = "black"
+)
+
+ggdag(dag_df, text = FALSE, node = FALSE) +
+  geom_dag_text(aes(color = type), show.legend = FALSE) +
+  geom_point(aes(x = 1.5, y = 0.5, color = type), size = 1, show.legend = TRUE) + # invisible points ONLY for legend
+  scale_color_manual(
+    values = my_colors, name = "") +
+  coord_cartesian(xlim = c(0, 1))+
+  scale_y_reverse()+
+  theme_dag()
+
+```
+
 
 ## Estimating a metric of yearly fry abundance
 The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. The index is relative, because we cannot estimate the proportion of all emerging fry that are sampled. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
@@ -911,51 +1009,3 @@ knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
 ```
 
 
-```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=4.1, fig.pos='center', fig.cap= "Directed acyclic graph showing assumed causal pathways."}
-
-dag <- dagitty('dag {
-bb="0,0,1,1"
-"FWMT compliant" [pos="0.465,0.244"]
-"date of new moon" [pos="0.7,0.2"]
-"incubation temperature" [pos="0.500,0.578"]
-"time sampled" [pos="0.7,0.505"]
-"volume sampled" [pos="0.9,0.45"]
-day [pos="0.9,0.262"]
-hour [pos="0.9,0.203"]
-n_fry [outcome,pos="0.541,0.420"]
-n_fry_sampled [pos="0.738,0.362"]
-n_spawners [pos="0.375,0.5"]
-"FWMT compliant" -> n_fry
-"date of new moon" -> n_fry_sampled
-"incubation temperature" -> n_fry
-"incubation temperature" -> n_fry_sampled
-"time sampled" -> n_fry_sampled
-"volume sampled" -> n_fry_sampled
-day -> n_fry_sampled
-hour -> n_fry_sampled
-n_fry -> n_fry_sampled
-n_spawners -> n_fry
-}
-
-')
-
-dag_df <- tidy_dagitty(dag) %>%
-  mutate(type = case_when(name %in% c("n_fry", "n_fry_sampled") ~ "outcome",
-                          name %in% c("incubation temperature", "date of new moon", "FWMT compliant", "spawning habitat", "n_spawners") ~ "explanatory variable",
-                          name %in% c("day", "hour", "volume sampled", "time sampled") ~ "adjustment variable"))
-
-my_colors <- c(
-  "outcome" = "red",
-  "explanatory variable" = "blue",
-  "adjustment variable" = "grey"
-)
-
-# Plot
-ggdag(dag_df, text = FALSE, node = FALSE) +
-  geom_dag_text(aes(color = type), show.legend = FALSE) +
-  geom_point(aes(x = 1.5, y = 0.5, color = type), size = 1, show.legend = TRUE) + # invisible points ONLY for legend
-  scale_color_manual(
-    values = my_colors, name = "") +
-  coord_cartesian(xlim = c(0.3, 0.95))+
-  theme_dag()
-```
