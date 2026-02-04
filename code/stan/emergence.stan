@@ -167,7 +167,7 @@ transformed parameters{
     
     alpha_sf[y] = exp(alpha0
     + a_FWMT * exceeded_FWMT[y]
-    + sf_ATU * ATU[y]
+    + sf_ATU * ATU_merge[y]
     );
   }
     fresh_days_scaled = fresh_days/sd(fresh_days);
