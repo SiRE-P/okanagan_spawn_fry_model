@@ -922,7 +922,7 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
 ## Estimating a metric of yearly fry abundance
 The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. The index is relative, because we cannot estimate the proportion of all emerging fry that are sampled. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
 
-To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
+To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. We use a normal distribution to describe daily emergence as a phenomenological approximation of emergence patterns, rather than as a mechanistic model of individual emergence timing. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
 
 $$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\, d_y^{\text{sd}}} \cdot 
 \exp\!\left(
@@ -930,7 +930,8 @@ $$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\, d_y^{
 \right),$$
 
 
-where $\hat{N}_{y,d}^{\text{fry}}$ is expected fry abundance in year $y$ on day $d$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years. The parameter $d_y^{\text{peak}}$ represents the peak day of emergence and $d_y^{\text{sd}}$ represents the spread of emergence across days.
+where $\hat{N}_{y,d}^{\text{fry}}$ is expected fry abundance in year $y$ on day $d$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years. The parameter $d_y^{\text{peak}}$ represents the peak day of emergence and $d_y^{\text{sd}}$ represents the spread of emergence across days. Both the timing $d_y^{\text{peak}}$) and spread ($d_y^{\text{sd}}$) of emergence were treated as year-specific parameters drawn from multiyear distributions, allowing emergence phenology to vary amoung years while borrowing information across the full time series. By modelling total abundance, emergence timing, and emergence spread as distinct year‑specific components, interannual variation in phenology does not bias estimates of annual fry abundance.
+
 
 The timing of emergence has been shown to depend on the cumulative exposure of the eggs to temperature [@beacham1990]. In addition, Syilx traditional knowledge indicates that fry emergence is timed with the new moon---when moonlight is minimal---to reduce predation risk from visually oriented predators. It is therefore plausible that the effect of accumulated thermal units (ATU) and the date of the new moon may interactively influence emergence, such that fry may track the new moon date, but only when sufficient development has occurred. Thus, we modelled the annual timing of peak emergence, $d_y^{\text{peak}}$, as a normal distribution with a mean that varies by year according to standardized ($\mu$ = 0, $\sigma$ = 1) accumulated thermal units ($\text{ATU}_y$) and the date of the new moon ($\text{moon}_y$), defined as the first new moon following April 6, to align with the typical emergence period. This model includes a multiyear intercept $\mu_d^{\text{peak}}$ and a standard deviation $\sigma_d^{\text{peak}}$, which give it hierarchical structure across years: 
 
@@ -938,14 +939,14 @@ $$d_y^{\text{peak}} \sim \text{Normal}(\mu_d^{\text{peak}} + \beta_d^{\text{ATU}
 
 The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date.
 
-We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for volume sampled and for the hourly emergence curve:
+We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening, again as a phenomenological approximation of within-day emergence patterns. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for volume sampled and for the hourly emergence curve:
 
 \begin{align*}
 N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
 \mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{volume}} \cdot (\log(\text{volume}_i) - \log(100)) - \frac{(h_i - h_{y_i,d_i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
 \end{align*}
 
-where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$). 
+where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$).
 
 Missing sampled volume was imputed within the Bayesian model using a log-log regression of volume on soak time and daily flow rates observed in the Okanagan River near Oliver. The parameters were estimated based on the observed volumes and missing values were imputed based on these relationships. 
 
@@ -960,8 +961,8 @@ We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\tex
 ## Estimating factors influencing spawner-to-fry production
 We modelled expected fry abundance $\mu_y^{\text{sf}}$ in year $y$ as a Shepherd function [@shepherd1982] of spawner abundance $N_y^{\text{spawners}}$:
 
-$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot N_y^{\text{spawners}}}{1 + (\beta^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
-where $\alpha_y^{\text{sf}}$ is the density independent production rate in year $y$, $\beta^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. This function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta^{\text{sf}}$ near one, avoiding the need for very small parameter values.
+$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}}N_y^{\text{spawners}}}{1 + (\beta^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
+where $\alpha_y^{\text{sf}}$ is the density independent production rate in year $y$, $\beta^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta^{\text{sf}}$ near one, avoiding the need for very small parameter values.
 
 We allow the density independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions, modelling it as a log-linear function in order to ensure positivity:
 
