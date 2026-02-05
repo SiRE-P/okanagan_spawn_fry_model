@@ -733,32 +733,32 @@ p3 <- fry_percent_change %>%
   #coord_cartesian(ylim =  c(-78, 20), expand = c(0, 0))
 
 
-thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), max(dat_list$thermal_onset), length = 30)
-thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), max(env.df$onset, na.rm = TRUE), length = 30)
+end_day_onset <- 248
+thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), (end_day_onset-mean(env.df$onset, na.rm = TRUE))/sd(env.df$onset, na.rm = TRUE), length = 30)
+thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), end_day_onset, length = 30)
 
 thermal_onset.df <- data.frame()
-
-
 for(i in 1:30){
-  effective_spawners <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * thermal_onsetV_scaled[i])
+  p_eff <- plogis(post$a_effective_spawners + post$b_therm_onset * thermal_onsetV_scaled[i])
+  effective_spawners <- med_spawners * p_eff
   alpha_sf <- exp(post$alpha0)
   hold <-(alpha_sf * effective_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf)
-  thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold))
+  thermal_onset.df <- bind_rows(thermal_onset.df, data.frame(onset = thermal_onsetV[i], fry = hold, p_eff = p_eff))
 }
 
-p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = fry))+
+p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = p_eff))+
   stat_lineribbon(.width = c(0.66, 0.95))+
   labs(x = "Date of thermal barrier onset")+
-  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)", )+
+  scale_y_continuous(name = expression("Per-capita spawner effectiveness ( " * italic(p)[y]^eff * ")"), limits = c(0, 1))+
   #scale_x_date(expand = c(0, 0))+
-  coord_cartesian(ylim = c(0, 3500), expand = FALSE)+
+  coord_cartesian(expand = FALSE)+
   scale_fill_brewer(palette = "Greys", guide = "none")
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
   plot_layout(height = c(1,0.8), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey).  The lines contrast an early and late thermal barrier scenario (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; yellow; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],"; purple), with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on fry abundance. Estimates are shown at median spawner abundance with FWMT maintained. Panel C shows the estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
+fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey).  The lines contrast an early and late thermal barrier scenario (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; yellow; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],"; purple), with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on per-captita spawner effectiveness. Panel C shows the estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
 ,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
@@ -787,9 +787,6 @@ Beyond the direct effects of incubation conditions, upstream migration condition
 
 Okanagan sockeye begin their 830 km migration up the mainsteam of the Columbia River in mid June, passing by nine hydroelectric dams and reaching the confluence of the Okanagan River (spelled Okanogan in the U.S.A.) by late June or early July. From there, they migrate an additional 185 km up the Okanagan River reaching their spawning grounds above Osoyoos Lake. Summer temperatures in the lower Okanagan River routinely thermal barrier to migration, forcing fish to hold in Lake Pateros at the confluence with the Columbia River and resulting in considerable thermal stress [@miller-saunders2024] and en-route mortality [@hyatt2020]. Observations of broodstock collected by the Okanagan Nation Alliance `r paste0("kł c", "p", "\u0313", "\u0259", "l", "k", "\u0313", " stim", "\u0313")` hatchery indicate that fish that were forced to hold in Lake Pateros for an extended period produced fewer eggs compared to fish that were transported past the thermal barrier and held in cooler hatchery waters (pers. comm. D. Stefanovic and T. Marsel), despite documented negative effects of maternal hatchery holding on egg size [@sopinka2016]. It is therefore plausible that the timing and duration of the thermal barrier may impact the productivity of the fish that survive to reach the spawning grounds. 
 
-<!-- The production of fry is expected to have a positive but saturating relationship with spawner abundance. Saturation occurs because resources are limited which causes density dependence. In this life stage, the key limiting resource is spawning habitat. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000].  -->
-
-
 Here we present a process-based Bayesian model that estimates how flow velocity and temperature, during and preceding the incubation period, influence spawner-to-fry production of sockeye salmon in the Okanagan River. This model allows us to test the following hypotheses: (1) higher pre-spawning flows increase production by flushing fine sediments from spawning gravel; (2) production is reduced in years when incubation-period flows fall outside the FWMT target range ($5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$), reflecting increased scour and desiccation risk; (3) interannual variation in incubation temperature has limited effects on production because temperatures during incubation generally remain within ranges suitable for embryo survival; (4) production is reduced in years when the thermal barrier in the lower Okanagan forms earlier and lasts longer, through carry-over effects of thermal stress on spawner condition. By quantifying the benefits of flow management for salmon and the risks posed by warming temperatures, this work supports the continued application of the Fish/Water Management Tool and provides insight into how similar approaches may support the sustainable management of Okanagan sockeye and other salmon populations.
 
 
@@ -810,6 +807,9 @@ We define the thermal barrier period as the days between June 25 and September 3
 
 The onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. Duration is strongly negatively correlated with onset date (*r* = `r round(cor(thermal_barrier$onset, thermal_barrier$duration), 2)`), reflecting the fact that duration is likely to be longer when onset is early. To separate these effects, we used residual duration, from a linear model of duration as a function of onset date, which represents whether the barrier lasted longer or shorter than expected for its onset.
 
+Because water temperatures at Malott are not available prior to `r min(thermal_barrier$year)`, we treated thermal-barrier onset and residual duration as partially missing covariates and estimated them within the Bayesian spawner-to-fry recruitment model. For years with missing Malott temperature data, standardized onset date (mean = 0, sd = 1) was modelled as a linear function of mean June air temperature from the nearby USGS station USW00094197, with residual error estimated from the years with observed onset. Residual duration (standardized to mean 0 and sd 1) was imputed for missing years using a $\text{Normal}(0, 1)$ distribution.
+
+
 ### Incubation period flow and temperature
 We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
 
@@ -817,7 +817,7 @@ We define the incubation period as `r incubation_start` to `r incubation_end`. T
 We characterized interannual variation in pre-spawn flushing conditions using daily discharge in the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January–September preceding the spawning period (Figure X). Because the flow level at which flushing effects occur is uncertain, we estimated the threshold and the index of flushing within our Bayesian spawner-to-fry recruitment model (described subsequently).
 
 ## Directed acyclic graph and overall model structure
-The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG; Figure @ref(fig:DAG)), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024].
+The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG; Figure @ref(fig:DAG)), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 to aid computation and interpretability of effect sizes.
 
 ```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red)."}
 
@@ -961,22 +961,39 @@ We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\tex
 ## Estimating factors influencing spawner-to-fry production
 We modelled expected fry abundance $\mu_y^{\text{sf}}$ in year $y$ as a Shepherd function [@shepherd1982] of spawner abundance $N_y^{\text{spawners}}$:
 
-$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}}N_y^{\text{spawners}}}{1 + (\beta^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
-where $\alpha_y^{\text{sf}}$ is the density independent production rate in year $y$, $\beta^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta^{\text{sf}}$ near one, avoiding the need for very small parameter values.
+$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}} \cdot N_y^{\text{spawners}}}{1 + (\beta_y^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
+where $\alpha_y^{\text{sf}}$ is the density-independent production rate in year $y$, $\beta_y^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta_y^{\text{sf}}$ near one, avoiding the need for very small parameter values.
 
-We allow the density independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions, modelling it as a log-linear function in order to ensure positivity:
+### Density-independent productivity during incubation
+We allow the density-independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions experienced during incubation, modelling it as a log-linear function in order to ensure positivity:
 
-$$\log \alpha_y^{\text{sf}} = \alpha_0^{\text{sf}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y.$$
-The parameter $\alpha_0^{\text{sf}}$ is the density independent production rate in average conditions and the $\beta$ coefficients are the slope parameters that estimate the effect of environmental conditions on this rate: $\beta^{\text{onset}}$ is the influence of upstream migration thermal barrier onset date, $\beta^{\text{dur}}$ is the additional influence of barrier duration beyond that of onset date, $\beta^{\text{FWMT}}$ is the effect of flow rates exceeding the FWMT range during incubation, and $\beta^{\text{ATU}}$ is the effect of accumulated thermal units during incubation. We assume that realized fry abundances $N_y^{\text{fry}}$ deviate from their expected value $\mu_y^{\text{sf}}$ due to process error $\sigma_{\text{proc}}^{\text{sf}}$, with log abundance following a normal distribution around the expected value:
+$$\log \alpha_y^{\text{sf}} = \alpha_0^{\text{sf}} + \beta^{\text{FWMT}} \cdot \text{FWMT}_y + \beta^{\text{ATU}} \cdot \text{ATU}_y.$$
+The parameter $\alpha_0^{\text{sf}}$ is the density-independent production rate in average conditions and the $\beta$ coefficients are the slope parameters that estimate the effect of whether or not discharge exceeded the FWMT target range at any point during the incubation period ($\beta^{\text{FWMT}}$) and accumulated thermal units during incubation ($\beta^{\text{ATU}}$).
+
+### Thermal barrier impacts on per-capita spawner effectiveness
+We model the effect of upstream migration thermal conditions on spawner-to-fry production as a reduction in per-capita spawner reproductive effectiveness. We use a logistic function to represent this effect, reflecting the assumption that delayed thermal-barrier onset can increase effectiveness only up to the point at which all returning salmon have successfully migrated, beyond which additional delays confer no further benefit:
+$$p_y^{\text{eff}} = \text{inv_logit}(\alpha_0^{\text{eff}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y) $$, 
+where $\alpha_0^{\text{eff}}$ represents baseline per-capita spawner effectiveness on the logit scale under average conditions, $\beta^{\text{onset}}$ describes the effect of thermal-barrier onset date, and $\beta^{\text{dur}}$ is the additional effect of barrier duration beyond that explained by onset timing.
+
+### Density dependence and pre-spawn flushing
+We assume that density dependence during spawner-to-fry recruitment occurs primarily through crowding on the spawning grounds. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. Thus, we assume that the effects of pre-spawn flushing of fine sediments should impact the population by changing the amount and quality of available spawning gravel. We model this by allowing the density-dependence parameter $\beta_y^{\text{sf}}$ to vary as a function of an annual pre-spawn flushing index: 
+$$\log \beta_y^{\text{sf}} = \beta_0^{\text{sf}} + \beta^{\text{flush}} \cdot \text{flush}_y.$$
+
+The index, $\text{flush}_y$, is derived from daily discharge prior to spawning and represents the cumulative number of days that discharge exceeded a threshold flow, with the threshold estimated within the Bayesian model (see Supplementary Materials). 
+
+
+### Process error and spawner uncertainty
+We assume that realized fry abundances $N_y^{\text{fry}}$ deviate from their expected value $\mu_y^{\text{sf}}$ due to process error $\sigma_{\text{proc}}^{\text{sf}}$, with log abundance following a normal distribution around the expected value:
 
 $$\log N_y^{\text{fry}} \sim \text{Normal}(\log \mu_y^{\text{sf}}, \sigma_{\text{proc}}^{\text{sf}}).$$
-We model log spawner abundance $log N_y^{\text{spawners}}$ as:
+To propagate uncertainty in spawner abundance, we model log spawner abundance $\log N_y^{\text{spawners}}$ as a latent variable:
 
 $$\log N_y^{\text{spawners}} \sim \text{Normal}(\hat{\mu}_y^{\text{spawners}}, \hat{\sigma}_y^{\text{spawners}})$$
 
 where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @thompsoninreview.
 
-We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
+### Priors
+We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density-dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density-dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
 
 
 # Results
@@ -985,7 +1002,7 @@ We used weakly regularizing priors for all parameters in this model as well. The
 fig_fry_emerge
 ```
 
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=10, fig.cap=fig_spawn_fry_cap}
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=8, fig.cap=fig_spawn_fry_cap}
 fig_spawn_fry
 ```
 
@@ -1004,6 +1021,10 @@ fig_spawn_fry
 \beginsupplement
 
 # Supplementary Materials
+## Details of the pre-spawn flushing model
+
+
+## Supplementary Figures
 <!-- switch to map that includes vertical drop structures -->
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
