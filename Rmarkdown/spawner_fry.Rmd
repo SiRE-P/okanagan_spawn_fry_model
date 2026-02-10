@@ -406,7 +406,11 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  
                  N_missing_thermal = sum(is.na(env.df$onset)),
                  thermal_missidx = which(is.na(env.df$onset)),
-                 thermal_onset = ifelse(!is.na(env.df$onset), stand(env.df$onset), -999),
+                 thermal_onset = ifelse(!is.na(env.df$onset), env.df$onset, -999),
+                 onset_mean = mean(env.df$onset, na.rm = TRUE),
+                 onset_sd = sd(env.df$onset, na.rm = TRUE),
+                 onset_low_bound = min(env.df$onset, na.rm = TRUE),
+                 
                  thermal_dur_resid = ifelse(!is.na(env.df$duration_resid), env.df$duration_resid/sd(env.df$duration_resid, na.rm = TRUE), -999),
                  
                  malott_june_air = stand(env.df$june_malott_air),
@@ -761,9 +765,7 @@ fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between sp
 ,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
-Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% 
-(95\% CI: `r round(quantile(fry_percent_change$FWMT,0.025))`\% to
-`r round(quantile(fry_percent_change$FWMT,0.975))`\%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
+Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95\% CI: `r round(quantile(fry_percent_change$FWMT,0.025))`\% to `r round(quantile(fry_percent_change$FWMT,0.975))`\%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
 
 \noindent\textbf{Keywords:} salmon; Oncorhynchus; spawner; fry; temperature; flow; incubation; Osoyoos Lake; Okanagan River; Columbia River
 
@@ -821,8 +823,57 @@ where $Q_{y,d}$ is the discharge on day $d$ in year $y$ and $D_y$ includes all d
 
 We selected values for these parameters based on observations of gravel mobility in the Okanagan River spawning grounds, which show that movement begins to occur at around 28 $\mathrm{m}^3/\mathrm{s}$ (aligned with the FWMT upper threshold for incubation flows), with full movement occurring at around 70 $\mathrm{m}^3/\mathrm{s}$ [@summitenvironmentalconsultantsltd.2002]. Thus, we set $Q^*$ at the discharge corresponding to the approximate midpoint of this transition (`r dat_list$freshet_threshold` $\mathrm{m}^3/\mathrm{s}$), and $k_{\text{flush}}$ to produce a smooth logistic response spanning the observed range of gravel movement. 
 
+```{r envfig, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=5.5, fig.pos='center',fig.cap = "Environmental covariates"}
+spread_draws(fit, thermal_onset_merge[y]) |> 
+  mutate(year = y + init_year - 1) |> 
+ggplot(aes(x = year, y = thermal_onset_merge))+
+  stat_pointinterval(pch = NA)+
+  stat_summary(fun = median, geom = "line")+
+  labs(x = "Brood year", y = "Thermal barrier onset")+
+  scale_y_continuous(
+    labels = function(d) format(as.Date(d - 1, origin = "2020-01-01"), "%b %d"),
+    breaks = scales::pretty_breaks(n = 5),
+  )+
+  
+ggplot(env.df, aes(x = onset, y = duration))+
+  geom_smooth(method = "lm", se = FALSE, color = "black")+
+  geom_point()+
+    scale_x_continuous(
+    labels = function(d) format(as.Date(d - 1, origin = "2020-01-01"), "%b %d"),
+    breaks = scales::pretty_breaks(n = 3),
+  )+
+  labs(x = "Barrier onset", y = "Barrier duration (days)")+
+
+  spread_draws(fit, thermal_dur_resid_merge[y]) |> 
+  mutate(year = y + init_year - 1) |> 
+  ggplot(aes(x = year, y = thermal_dur_resid_merge))+
+  stat_pointinterval(pch = NA)+
+  stat_summary(fun = median, geom = "line")+
+  labs(x = "Brood year", y = "Barrier duration (resid.)")+
+
+  spread_draws(fit, fresh_days[y]) |> 
+  mutate(year = y + init_year - 1) |> 
+  ggplot(aes(x = year, y = fresh_days))+
+  stat_pointinterval(pch = NA)+
+  stat_summary(fun = median, geom = "line")+
+  labs(x = "Brood year", y = "Pre-spawn flushing (days)")+
+  
+  ggplot(env.df, aes(x = brood_year, y = non_range_days == 0)) +
+  geom_point(size = 2) +
+  scale_y_discrete(limits = c(FALSE, TRUE),
+                   labels = c("No", "Yes")) +
+  labs(x = "Brood year", y = "FWMT range maintained")+
+  
+  ggplot(env.df, aes(x = brood_year, y = ATU))+
+  geom_line()+
+  labs(x = "Brood year", y = "Incubation ATUs")+
+  
+  plot_annotation(tag_levels = "A")
+
+```
+
 ## Directed acyclic graph and overall model structure
-The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG; Figure @ref(fig:DAG)), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 to aid computation and interpretability of effect sizes.
+The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 to aid computation and interpretability of effect sizes.
 
 ```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red)."}
 
