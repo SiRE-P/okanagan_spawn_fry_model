@@ -413,10 +413,9 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
                  
                  freshet_days = ncol(freshet_mat),
                  freshet_flow = freshet_mat,
-                 freshet_threshold_prior_mu = 57,
-                 freshet_threshold_prior_sigma = 5,
+                 freshet_threshold = 50,
                  freshet_transition_slope = 0.2,
-                 
+
                  sigma_sf_prior = 1,
                  beta_sf_prior = 0,
                  alpha_sf_prior = -3,
@@ -814,7 +813,13 @@ Because water temperatures at Malott are not available prior to `r min(thermal_b
 We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
 
 ### Pre-spawn flushing flows
-We characterized interannual variation in pre-spawn flushing conditions using daily discharge in the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January–September preceding the spawning period (Figure X). Because the flow level at which flushing effects occur is uncertain, we estimated the threshold and the index of flushing within our Bayesian spawner-to-fry recruitment model (described subsequently).
+We characterized pre‑spawn flushing conditions using daily discharge from the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January–September prior to each spawning season (Figure X). To summarize the extent to which flows were capable of mobilizing fine sediments within the spawning gravel, we constructed an annual flushing index:
+
+$$\text{flush}_y = \sum_{d \in D_y}\operatorname{inv\_logit}(k_{\text{flush}} \cdot (Q_{y,d} - Q^*))$$
+
+where $Q_{y,d}$ is the discharge on day $d$ in year $y$ and $D_y$ includes all days from January through September. The parameters $Q^*$ and $k_{\text{flush}}$ define how daily discharge is translated into a flushing intensity between 0 and 1. Summing across days allows the flushing effects to accumulate over the year preceding spawning.
+
+We selected values for these parameters based on observations of gravel mobility in the Okanagan River spawning grounds, which show that movement begins to occur at around 28 $\mathrm{m}^3/\mathrm{s}$ (aligned with the FWMT upper threshold for incubation flows), with full movement occurring at around 70 $\mathrm{m}^3/\mathrm{s}$ [@summitenvironmentalconsultantsltd.2002]. Thus, we set $Q^*$ at the discharge corresponding to the approximate midpoint of this transition (`r dat_list$freshet_threshold` $\mathrm{m}^3/\mathrm{s}$), and $k_{\text{flush}}$ to produce a smooth logistic response spanning the observed range of gravel movement. 
 
 ## Directed acyclic graph and overall model structure
 The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG; Figure @ref(fig:DAG)), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 to aid computation and interpretability of effect sizes.
@@ -972,11 +977,17 @@ The parameter $\alpha_0^{\text{sf}}$ is the density-independent production rate 
 
 ### Thermal barrier impacts on per-capita spawner effectiveness
 We model the effect of upstream migration thermal conditions on spawner-to-fry production as a reduction in per-capita spawner reproductive effectiveness. We use a logistic function to represent this effect, reflecting the assumption that delayed thermal-barrier onset can increase effectiveness only up to the point at which all returning salmon have successfully migrated, beyond which additional delays confer no further benefit:
-$$p_y^{\text{eff}} = \text{inv_logit}(\alpha_0^{\text{eff}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y) $$, 
+
+$$p_y^{\text{eff}} = \operatorname{inv\_logit}(\alpha_0^{\text{eff}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y),$$ 
 where $\alpha_0^{\text{eff}}$ represents baseline per-capita spawner effectiveness on the logit scale under average conditions, $\beta^{\text{onset}}$ describes the effect of thermal-barrier onset date, and $\beta^{\text{dur}}$ is the additional effect of barrier duration beyond that explained by onset timing.
 
 ### Density dependence and pre-spawn flushing
-We assume that density dependence during spawner-to-fry recruitment occurs primarily through crowding on the spawning grounds. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. Thus, we assume that the effects of pre-spawn flushing of fine sediments should impact the population by changing the amount and quality of available spawning gravel. We model this by allowing the density-dependence parameter $\beta_y^{\text{sf}}$ to vary as a function of an annual pre-spawn flushing index: 
+We assume that density dependence during spawner-to-fry recruitment occurs primarily through crowding on the spawning grounds. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. Thus, we assume that the effects of pre-spawn flushing of fine sediments should impact the population by changing the amount and quality of available spawning gravel [@moring1982; @reiser1989]. 
+
+We summarized pre-spawn flushing conditions using an annual index $\text{flush}_y$ derived from daily discharge in 
+
+
+We model this by allowing the density-dependence parameter $\beta_y^{\text{sf}}$ to vary as a function of an annual pre-spawn flushing index: 
 $$\log \beta_y^{\text{sf}} = \beta_0^{\text{sf}} + \beta^{\text{flush}} \cdot \text{flush}_y.$$
 
 The index, $\text{flush}_y$, is derived from daily discharge prior to spawning and represents the cumulative number of days that discharge exceeded a threshold flow, with the threshold estimated within the Bayesian model (see Supplementary Materials). 
