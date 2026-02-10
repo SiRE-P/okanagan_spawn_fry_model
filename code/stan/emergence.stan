@@ -48,8 +48,7 @@ data {
   int freshet_days;
   array[Y, freshet_days]  real<lower=0> freshet_flow;
   real freshet_transition_slope;
-  real freshet_threshold_prior_mu;
-  real<lower=0> freshet_threshold_prior_sigma;
+  real freshet_threshold;
 
   real sigma_sf_prior;
   real alpha_sf_prior;
@@ -70,8 +69,6 @@ parameters {
   real a_FWMT;
   real sf_ATU;
   
-  real<lower=0> freshet_threshold; 
-
   real a_effective_spawners;
   real b_therm_onset_raw;
   real b_therm_dur_raw;
@@ -198,8 +195,6 @@ model {
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
-
-  freshet_threshold ~ normal(freshet_threshold_prior_mu, freshet_threshold_prior_sigma);
 
   a_effective_spawners ~ normal(0, 0.25); 
   thermal_barrier_transition_width_sd ~ lognormal(log(2.5), 0.4);
