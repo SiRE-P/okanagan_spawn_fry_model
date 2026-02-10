@@ -39,6 +39,9 @@ data {
   int N_missing_thermal;
   array[N_missing_thermal] int thermal_missidx;
   vector[Y] thermal_onset;
+  real onset_mean;
+  real onset_sd;
+  real onset_low_bound;
   vector[Y] thermal_dur_resid;
   
   vector[Y] malott_june_air;
@@ -111,7 +114,7 @@ parameters {
   //missing data
   vector<lower=0>[N_missing_volume] volume_impute;
   vector[N_missing_ATU] ATU_impute;
-  vector[N_missing_thermal] thermal_onset_impute;
+  vector<lower=onset_low_bound>[N_missing_thermal] thermal_onset_impute;
   vector[N_missing_thermal] thermal_dur_resid_impute;
 }
 transformed parameters{
@@ -128,6 +131,9 @@ transformed parameters{
   vector[Y] thermal_dur_resid_merge;
   thermal_dur_resid_merge = merge_missing(thermal_missidx, to_vector(thermal_dur_resid), thermal_dur_resid_impute);
   
+  //standardized thermal onset
+  vector[Y] thermal_onset_scaled;
+  thermal_onset_scaled = (thermal_onset_merge - onset_mean) / onset_sd;
   
   //non-centered priors
   vector[Y] hour_sd;
@@ -159,7 +165,7 @@ transformed parameters{
       fresh_days[y] += inv_logit(freshet_transition_slope * (freshet_flow[y, d] - freshet_threshold));
     }    
     
-    eff_spawner_prop[y] = inv_logit(a_effective_spawners + b_therm_onset * thermal_onset_merge[y] + b_therm_dur * thermal_dur_resid_merge[y]);
+    eff_spawner_prop[y] = inv_logit(a_effective_spawners + b_therm_onset * thermal_onset_scaled[y] + b_therm_dur * thermal_dur_resid_merge[y]);
     effective_spawners[y] = eff_spawner_prop[y] * spawners[y];
     
     alpha_sf[y] = exp(alpha0
@@ -209,7 +215,7 @@ model {
   a_onset ~ normal(0, 0.1);
   b_air_onset ~ normal(-0.5, 0.5);
   onset_sigma ~ exponential(1);
-  thermal_onset_merge ~ normal(a_onset + b_air_onset * malott_june_air, onset_sigma);
+  thermal_onset_scaled ~ normal(a_onset + b_air_onset * malott_june_air, onset_sigma);
   
   
   a_volume ~ normal(0,2);

@@ -437,8 +437,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 1000,
-  iter_warmup = 1000,
+  iter_sampling = 200,
+  iter_warmup = 200,
   seed = 7, 
   adapt_delta = 0.99
 )
@@ -582,10 +582,11 @@ FWMT_BH.df <- data.frame()
 for(j in 0:1){
   for(k in 1:2){
     onset <- quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], probs = c(low, high))[k]
+    onset_stnd <- (onset-dat_list$onset_mean)/dat_list$onset_sd
   alpha_sf <- exp(post$alpha0 + post$a_FWMT * j)
   beta_sf <- exp(post$beta0 + post$b_freshet * mean_fresh_days_scaled)
   for(i in 1:length(spawnV)){
-    effective_spawners <- spawnV[i] * plogis(post$a_effective_spawners + post$b_therm_onset * onset)
+    effective_spawners <- spawnV[i] * plogis(post$a_effective_spawners + post$b_therm_onset * onset_stnd)
 
     total_fry = (alpha_sf * effective_spawners)/(1 + beta_sf * (spawnV[i]/1e05) ^ post$theta_sf)
     FWMT_BH.df <- bind_rows(FWMT_BH.df, data.frame(spawners = spawnV[i], effective_spawners = effective_spawners, FWMT_range = c("within", "outside")[j+1], onset = quantile(thermal_barrier$onset, na.rm = TRUE, probs = c(low, high))[k], total_fry = total_fry, draw = 1:length(post$alpha0)))
@@ -605,8 +606,7 @@ FWMT_BH_summary.df<- FWMT_BH.df %>%
 onset_merged <- spread_draws(fit, thermal_onset_merge[year]) |> 
   mutate(year = init_year + year) %>% 
   group_by(year) |> 
-  summarise(onset_scaled = median(thermal_onset_merge)) |> 
-  mutate(onset = round(onset_scaled * sd(env.df$onset, na.rm = TRUE) + mean(env.df$onset, na.rm = TRUE))) |> 
+  summarise(onset = median(thermal_onset_merge)) |> 
   mutate(onset = as.Date(onset - 1, origin = "2020-01-01"))
   
   
@@ -643,10 +643,10 @@ mu_lowATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$t
 alpha_sf <- exp(post$alpha0 + post$sf_ATU * quantile(dat_list$ATU[dat_list$ATU>-999], high, na.rm = TRUE))
 mu_highATU <-(alpha_sf * med_spawners)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
-eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], low))
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * (((quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], low))-dat_list$onset_mean)/dat_list$onset_sd))
 alpha_sf <- exp(post$alpha0)
 mu_early_onset <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
-eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], high))
+eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_onset * (((quantile(dat_list$thermal_onset[-dat_list$thermal_missidx], high))-dat_list$onset_mean)/dat_list$onset_sd))
 mu_late_onset <-(alpha_sf * eff_spawn)/(1 + beta_sf * (med_spawners/1e05)^ post$theta_sf);
 
 eff_spawn <- med_spawners * plogis(post$a_effective_spawners + post$b_therm_dur * quantile(dat_list$thermal_dur_resid[-dat_list$thermal_missidx], low))
@@ -737,8 +737,8 @@ p3 <- fry_percent_change %>%
 
 
 end_day_onset <- 248
-thermal_onsetV_scaled <- seq(min(dat_list$thermal_onset[-dat_list$thermal_missidx]), (end_day_onset-mean(env.df$onset, na.rm = TRUE))/sd(env.df$onset, na.rm = TRUE), length = 30)
 thermal_onsetV <- seq(min(env.df$onset, na.rm = TRUE), end_day_onset, length = 30)
+thermal_onsetV_scaled <- (thermal_onsetV-dat_list$onset_mean)/dat_list$onset_sd
 
 thermal_onset.df <- data.frame()
 for(i in 1:30){
@@ -751,7 +751,7 @@ for(i in 1:30){
 
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = p_eff))+
   stat_lineribbon(.width = c(0.66, 0.95))+
-  labs(x = "Date of thermal barrier onset")+
+  labs(x = "Thermal barrier onset")+
   scale_y_continuous(name = expression("Per-capita spawner effectiveness ( " * italic(p)[y]^eff * ")"), limits = c(0, 1))+
   #scale_x_date(expand = c(0, 0))+
   coord_cartesian(expand = FALSE)+
@@ -1091,5 +1091,3 @@ fig_spawn_fry
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
 ```
-
-
