@@ -133,15 +133,7 @@ emergence <- emergence %>% mutate(volume_m3 = ifelse(volume_m3<0, NA, volume_m3)
   mutate(total_catch = as.integer(total_catch)) |> 
   filter(sample_year>2002) #2002 was the first year of sampling and methods were not yet worked out
 
-new_moons <- data.frame()
-for(i in 1:length(unique(emergence$sample_year))){
-  year <- unique(emergence$sample_year)[i]
-  start_date <- as.Date(paste(year,"-04-06", sep = ""))
-  dates <- seq(start_date, start_date+29, by = "day")
-  new_moons <- bind_rows(new_moons, data.frame(year = year, new_moon_date = dates[which.min(lunar.illumination(dates))], new_moon_yday = yday(dates[which.min(lunar.illumination(dates))])))
-}
 
-emergence <- emergence %>% left_join(new_moons %>% rename(sample_year = year))
 
 emergence_select <- emergence %>% select(date, brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric, volume_m3) %>% 
   mutate(date = as.Date(date)) %>% 
@@ -222,6 +214,30 @@ ATU_day100 <- ATU.df %>%
   mutate(year = year(date)) %>%
   filter(yday == yday(incubation_end_full))
 
+temp_means <- temp_means |> 
+  mutate(yday = yday(date)) |> 
+  mutate(year = year(date)) |> 
+  mutate(incubation = yday < yday(incubation_end_full) | yday > yday(incubation_start_full))
+```
+
+```{r moon, include = FALSE}
+new_moons <- data.frame()
+for(i in 1:length(unique(emergence$sample_year))){
+  year <- unique(emergence$sample_year)[i]
+  ATU_year <- ATU.df |> filter(year == year_start+1)
+  
+  if(max(ATU_year$ATU > 900)){
+    ATU_thresh_date <- ATU_year|> 
+    filter(ATU > 900) |> 
+    first()
+  } else{
+    ATU_thresh_date <- last(ATU_year)
+  }
+  start_date <- ATU_thresh_date$date
+  dates <- seq(start_date, start_date+29, by = "day")
+  new_moons <- bind_rows(new_moons, data.frame(year = year, new_moon_date = dates[which.min(lunar.illumination(dates))], new_moon_yday = yday(dates[which.min(lunar.illumination(dates))])))
+}
+
 env.df <- new_moons %>% 
   left_join(ATU_day100 %>% select(year, ATU))
 
@@ -230,11 +246,6 @@ ggplot(env.df, aes(x = new_moon_yday, y = ATU))+
   geom_text_repel(aes(label = year))
 
 summary(lm(ATU ~ new_moon_yday, data = env.df))
-
-temp_means <- temp_means |> 
-  mutate(yday = yday(date)) |> 
-  mutate(year = year(date)) |> 
-  mutate(incubation = yday < yday(incubation_end_full) | yday > yday(incubation_start_full))
 ```
 
 ```{r flow, include=FALSE}
@@ -437,8 +448,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 1000,
-  iter_warmup = 1000,
+  iter_sampling = 200,
+  iter_warmup = 200,
   seed = 7, 
   adapt_delta = 0.99
 )
