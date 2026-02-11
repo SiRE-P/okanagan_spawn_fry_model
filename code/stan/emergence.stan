@@ -52,7 +52,7 @@ data {
   array[Y, freshet_days]  real<lower=0> freshet_flow;
   real freshet_transition_slope;
   real freshet_threshold;
-
+  
   real sigma_sf_prior;
   real alpha_sf_prior;
   real beta_sf_prior;
@@ -116,18 +116,23 @@ parameters {
   vector[N_missing_ATU] ATU_impute;
   vector<lower=onset_low_bound>[N_missing_thermal] thermal_onset_impute;
   vector[N_missing_thermal] thermal_dur_resid_impute;
+  
+  //hyperparamters for imputation of duration  
+  real xi_dur;
+  real<lower=0> omega_dur;
+  real alpha_dur;
 }
 transformed parameters{
   //missing variables
   vector[N] volume_merge;
   volume_merge = merge_missing(volume_missidx, to_vector(volume), volume_impute);
-
+  
   vector[Y] ATU_merge;
   ATU_merge = merge_missing(ATU_missidx, to_vector(ATU), ATU_impute);
-
+  
   vector[Y] thermal_onset_merge;
   thermal_onset_merge = merge_missing(thermal_missidx, to_vector(thermal_onset), thermal_onset_impute);
-
+  
   vector[Y] thermal_dur_resid_merge;
   thermal_dur_resid_merge = merge_missing(thermal_missidx, to_vector(thermal_dur_resid), thermal_dur_resid_impute);
   
@@ -160,7 +165,7 @@ transformed parameters{
   vector[Y] alpha_sf;
   vector[Y] beta_sf;
   for (y in 1:Y) {
-  fresh_days[y] = 0;
+    fresh_days[y] = 0;
     for (d in 1:freshet_days) {
       fresh_days[y] += inv_logit(freshet_transition_slope * (freshet_flow[y, d] - freshet_threshold));
     }    
@@ -173,9 +178,9 @@ transformed parameters{
     + sf_ATU * ATU_merge[y]
     );
   }
-    fresh_days_scaled = fresh_days/sd(fresh_days);
-    beta_sf = exp(beta0 + b_freshet * fresh_days_scaled); // 57 = sd(rowSums(freshet_mat>28.5))
-
+  fresh_days_scaled = fresh_days/sd(fresh_days);
+  beta_sf = exp(beta0 + b_freshet * fresh_days_scaled); // 57 = sd(rowSums(freshet_mat>28.5))
+  
   
   vector[Y] peak_fry;
   for (y in 1:Y){
@@ -201,7 +206,7 @@ model {
   
   a_FWMT ~ normal(0, 0.5);
   sf_ATU ~ normal(0, 0.5);
-
+  
   a_effective_spawners ~ normal(0, 0.25); 
   thermal_barrier_transition_width_sd ~ lognormal(log(2.5), 0.4);
   b_therm_dur_raw ~ normal(0, 0.5);
@@ -210,7 +215,13 @@ model {
   
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
   
-  thermal_dur_resid_impute ~  std_normal();
+  // priors informed by observed standardized data
+  xi_dur    ~ normal(0.45, 0.2);    
+  omega_dur ~ normal(1.30, 0.2); 
+  alpha_dur ~ normal(-2.4, 1.0);
+  
+  thermal_dur_resid_merge ~ skew_normal(xi_dur, omega_dur, alpha_dur);
+  
   //thermal_onset_impute ~ std_normal();
   a_onset ~ normal(0, 0.1);
   b_air_onset ~ normal(-0.5, 0.5);
@@ -223,7 +234,7 @@ model {
   b_sample_flow ~ normal(1, 0.5);
   sigma_volume ~ exponential(10);
   volume_merge ~ lognormal(a_volume + soak_b * log(soak_time) + b_sample_flow * log(sample_flow), sigma_volume);
-
+  
   
   sigma_sf ~ exponential(sigma_sf_prior);
   for (y in 1:Y){

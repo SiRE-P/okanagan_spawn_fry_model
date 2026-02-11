@@ -429,7 +429,7 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
 
 init_year <- min(emergence_select$sample_year) - 1
 
-stan_file <- "../code/stan/emergence.stan"
+stan_file <- "../code/stan/emergence_beta.stan"
 fit <- run_or_load_model(
   model_name = "emerge_m",
   stan_path = stan_file,
@@ -437,8 +437,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 200,
-  iter_warmup = 200,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
   seed = 7, 
   adapt_delta = 0.99
 )
@@ -846,10 +846,11 @@ ggplot(env.df, aes(x = onset, y = duration))+
 
   spread_draws(fit, thermal_dur_resid_merge[y]) |> 
   mutate(year = y + init_year - 1) |> 
-  ggplot(aes(x = year, y = thermal_dur_resid_merge))+
+  mutate(dur_resid = thermal_dur_resid_merge * sd(env.df$duration_resid, na.rm = TRUE) + mean(env.df$duration_resid, na.rm = TRUE)) |> 
+  ggplot(aes(x = year, y = dur_resid))+
   stat_pointinterval(pch = NA)+
   stat_summary(fun = median, geom = "line")+
-  labs(x = "Brood year", y = "Barrier duration (resid.)")+
+  labs(x = "Brood year", y = "Barrier duration (resid. days)")+
 
   spread_draws(fit, fresh_days[y]) |> 
   mutate(year = y + init_year - 1) |> 
