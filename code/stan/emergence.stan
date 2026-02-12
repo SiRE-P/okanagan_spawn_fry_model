@@ -90,8 +90,9 @@ parameters {
   
   real b_volume;
   real b_moon;
-  real b_ATU;
-  real b_moonxATU;
+  real gamma_offset;
+  real<lower=0> hinge_k; //moon hinge steepness
+  real moon_cut; //hinge cutpoint
   real b_dusk;
   
   real hour_peak_mu;
@@ -150,10 +151,15 @@ transformed parameters{
   vector[Y] eff_spawner_prop;
   
   hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
-  day_peak = day_peak_mu + day_peak_sigma * day_peak_z + 
-  b_moon * new_moon_date + 
-  b_ATU * ATU_merge +
-  b_moonxATU * (new_moon_date .* ATU_merge);
+  
+  
+  // hinge on moon date
+  vector[Y] base = day_peak_mu + day_peak_sigma * day_peak_z;       // year baseline
+  vector[Y] moon_linear  = base + b_moon * new_moon_date;           // early regime
+  vector[Y] w = inv_logit( hinge_k * (new_moon_date - moon_cut) );  // 0=early, 1=late
+  day_peak  = (1 - w) .* moon_linear + w .* (base + gamma_offset);  // convex blend
+  
+  
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
   
   //effective spawner paramaters scaled to SD units of onset date
@@ -222,7 +228,6 @@ model {
   
   thermal_dur_resid_merge ~ skew_normal(xi_dur, omega_dur, alpha_dur);
   
-  //thermal_onset_impute ~ std_normal();
   a_onset ~ normal(0, 0.1);
   b_air_onset ~ normal(-0.5, 0.5);
   onset_sigma ~ exponential(1);
@@ -244,9 +249,10 @@ model {
   
   //fry observation model
   b_volume ~ normal(1, 0.5);
-  b_moon ~ normal(0, 0.5);
-  b_ATU ~ normal(0, 0.5);
-  b_moonxATU ~ normal(0, 0.5);
+  b_moon ~ normal(0, 1);
+  gamma_offset ~ normal(0, 0.7);      // plateau relative to base; 0.7 ≈ ~1 week if dates are ~N(0,1) in std units
+  hinge_k      ~ normal(4, 2);  // positive: later moons → larger w; 4 gives a moderately sharp hinge
+  moon_cut     ~ normal(0, 0.6); 
   b_dusk ~ normal(0, 0.5);
   
   hour_peak_mu ~ normal(0, 0.5);

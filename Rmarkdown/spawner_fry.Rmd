@@ -197,7 +197,7 @@ incubation_end <- format(incubation_end_full, "%B ") %>%
 
 ATU.df <- temp_means %>% 
   mutate(yday = yday(date)) |> 
-  filter(yday <= yday(incubation_end_full) | yday > yday(incubation_start_full)) |> 
+  filter(yday <= 200 | yday > yday(incubation_start_full)) |> 
   mutate(year_start = if_else(format(date, "%m-%d") >= format(incubation_start_full, "%m-%d"),
                               year(date),
                               year(date) - 1)) %>% 
@@ -221,27 +221,29 @@ temp_means <- temp_means |>
 ```
 
 ```{r moon, include = FALSE}
+ATU_emergence_thresh <- 900
+
 new_moons <- data.frame()
 for(i in 1:length(unique(emergence$sample_year))){
-  year <- unique(emergence$sample_year)[i]
-  ATU_year <- ATU.df |> filter(year == year_start+1)
+  year_select <- unique(emergence$sample_year)[i]
+  ATU_year <- ATU.df |> filter(year_start == (year_select - 1))
   
-  if(max(ATU_year$ATU > 900)){
-    ATU_thresh_date <- ATU_year|> 
-    filter(ATU > 900) |> 
+  ATU_thresh_date <- ATU_year|> 
+    filter(ATU > ATU_emergence_thresh) |> 
     first()
-  } else{
-    ATU_thresh_date <- last(ATU_year)
-  }
+  
   start_date <- ATU_thresh_date$date
   dates <- seq(start_date, start_date+29, by = "day")
-  new_moons <- bind_rows(new_moons, data.frame(year = year, new_moon_date = dates[which.min(lunar.illumination(dates))], new_moon_yday = yday(dates[which.min(lunar.illumination(dates))])))
+  
+  new_moon_date = dates[which.min(lunar.illumination(dates))]
+  
+  new_moons <- bind_rows(new_moons, data.frame(year = year_select, ATU_yday = yday(start_date), new_moon_date = new_moon_date, new_moon_yday = yday(new_moon_date)))
 }
 
 env.df <- new_moons %>% 
   left_join(ATU_day100 %>% select(year, ATU))
 
-ggplot(env.df, aes(x = new_moon_yday, y = ATU))+
+ggplot(env.df, aes(x = new_moon_yday, y = ATU_yday))+
   geom_point()+
   geom_text_repel(aes(label = year))
 
@@ -440,7 +442,7 @@ dat_list <- list(Y = length(unique(emergence_select$sample_year)),
 
 init_year <- min(emergence_select$sample_year) - 1
 
-stan_file <- "../code/stan/emergence_beta.stan"
+stan_file <- "../code/stan/emergence.stan"
 fit <- run_or_load_model(
   model_name = "emerge_m",
   stan_path = stan_file,
@@ -448,8 +450,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 200,
-  iter_warmup = 200,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
   seed = 7, 
   adapt_delta = 0.99
 )
@@ -512,67 +514,105 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   #geom_textline(aes(label = year), hjust = 0.5, size = 3, linewidth = 1) +
   xlab("")+
   ylab("# of emerging fry (relative abund.)")+
-  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", limits = c(2000, 2025))+
+  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", limits = c(2000, 2025), name = "")+
   scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
-  theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
+  #theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
   scale_x_continuous(
     name = "",
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
   )
 
+moon_dayV <- seq(min(env.df$new_moon_yday), max(env.df$new_moon_yday), length = 30)
+moon_dayV_stnd <- (moon_dayV - mean(env.df$new_moon_yday))/sd(env.df$new_moon_yday)
 
+moon_emerge.df <- data.frame()
+for(i in 1:length(moon_dayV_stnd)){
+moon_linear <- post$day_peak_mu + post$b_moon * moon_dayV_stnd[i]
+w = plogis(post$hinge_k * (moon_dayV_stnd[i] - post$moon_cut))
 
-p2 <- bind_rows(
-  gather_draws(fit, b_ATU),
-  gather_draws(fit, b_moon), 
-  gather_draws(fit, b_moonxATU),
-  gather_draws(fit, b_dusk)) %>% 
-  mutate(.variable = case_when(.variable == "b_dusk" ~ "dusk", .variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
-  mutate(.variable = factor(.variable, levels = c("dusk","moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
-  ggplot(aes(x = .variable, y = .value))+
-  geom_hline(yintercept = 0, lty = 2)+
-  stat_pointinterval(.width = CIs)+
-  ylab("Estimated effect on emergence timing")+
-  xlab("Covariate")
+day_peak <- (1 - w) * moon_linear + w * (post$day_peak_mu + post$gamma_offset)
+moon_emerge.df <- rbind(moon_emerge.df, data.frame(moon_day = moon_dayV[i], 
+                                                   day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)))
+}
 
 
 p3 <- spread_draws(fit, day_peak[year]) %>% 
   mutate(year = init_year + year) %>%
   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
   left_join(env_post |> select(-day_peak)) %>% 
-  mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
-  ggplot(aes(x = new_moon_yday, y = day_peak, color = year, group = year))+
+  ggplot(aes(x = new_moon_yday, y = day_peak))+
+  stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CIs))+
   geom_abline(slope = 1, intercept = 0, lty = 2)+
-  stat_pointinterval(.width = CIs)+
+  stat_pointinterval(.width = CIs, aes(color = ATU_yday, group = year))+
+  scale_fill_brewer(palette = "Greys", guide = "none")+
   #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none", limits = c(2000, 2025))+
+  scale_color_viridis_c(option = "B", direction = -1, end = 0.9, 
+                        labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), "900 ATUs")+
   scale_y_continuous(
     name = "Estimated peak emergence date",
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
   ) +
   scale_x_continuous(
-    name = "Date of new moon",
+    name = "First new moon after 900 ATUs",
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-  ) 
-
-
-p4 <- spread_draws(fit, day_peak[year]) %>% 
-  mutate(year = init_year + year) %>%
-  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-  left_join(env_post |> select(-day_peak)) %>% 
-  ggplot(aes(x = ATU, y = day_peak, color = year, group = year))+
-  stat_pointinterval(.width = CIs)+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none", limits = c(2000, 2025))+
-  scale_y_continuous(
-    name = "Estimated peak emergence date",
-    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-  ) +
-  scale_x_continuous(
-    name = expression("Accumulated thermal units ("*degree*C*")")
   )
 
-fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.3))) / 
-  (p3 + p4) + 
+
+
+# p2 <- bind_rows(
+#   gather_draws(fit, b_ATU),
+#   gather_draws(fit, b_moon), 
+#   gather_draws(fit, b_moonxATU),
+#   gather_draws(fit, b_dusk)) %>% 
+#   mutate(.variable = case_when(.variable == "b_dusk" ~ "dusk", .variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
+#   mutate(.variable = factor(.variable, levels = c("dusk","moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
+#   ggplot(aes(x = .variable, y = .value))+
+#   geom_hline(yintercept = 0, lty = 2)+
+#   stat_pointinterval(.width = CIs)+
+#   ylab("Estimated effect on emergence timing")+
+#   xlab("Covariate")
+
+
+# p3 <- spread_draws(fit, day_peak[year]) %>% 
+#   mutate(year = init_year + year) %>%
+#   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+#   left_join(env_post |> select(-day_peak)) %>% 
+#   mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
+#   ggplot(aes(x = new_moon_yday, y = day_peak, color = ATU_yday, group = year))+
+#   geom_abline(slope = 1, intercept = 0, lty = 2)+
+#   stat_pointinterval(.width = CIs)+
+#   #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+#   scale_color_viridis_c(option = "B", guide = "none", direction = -1, end = 0.9)+
+#   scale_y_continuous(
+#     name = "Estimated peak emergence date",
+#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+#   ) +
+#   scale_x_continuous(
+#     name = "Date of new moon",
+#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+#   ) 
+
+
+# p4 <- spread_draws(fit, day_peak[year]) %>% 
+#   mutate(year = init_year + year) %>%
+#   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+#   left_join(env_post |> select(-day_peak)) %>% 
+#   ggplot(aes(x = ATU_yday, y = day_peak, color = year, group = year))+
+#   stat_pointinterval(.width = CIs)+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+#   scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none", limits = c(2000, 2025))+
+#   scale_y_continuous(
+#     name = "Estimated peak emergence date",
+#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+#   ) +
+#   scale_x_continuous(
+#     name = expression("Accumulated thermal units ("*degree*C*")")
+#   )
+
+# fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.3))) / 
+#   (p3 + p4) + 
+#   plot_annotation(tag_levels = "A")
+
+fig_fry_emerge <- p1 / p3 +
   plot_annotation(tag_levels = "A")
 
 fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect of the timing of dusk (dusk), the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU) on emergence timing. Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal units (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 66% and 95% credible intervals.")
@@ -761,7 +801,7 @@ for(i in 1:30){
 }
 
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = p_eff))+
-  stat_lineribbon(.width = c(0.66, 0.95))+
+  stat_lineribbon(.width = c(CIs))+
   labs(x = "Thermal barrier onset")+
   scale_y_continuous(name = expression("Per-capita spawner effectiveness ( " * italic(p)[y]^eff * ")"), limits = c(0, 1))+
   #scale_x_date(expand = c(0, 0))+
@@ -1072,7 +1112,7 @@ We used weakly regularizing priors for all parameters in this model as well. The
 
 # Results
 
-```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=8, fig.height=8, fig.cap= fig_fry_emerge_cap}
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=8, fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
 ```
 
