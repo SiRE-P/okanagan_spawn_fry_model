@@ -522,18 +522,18 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
   )
 
-moon_dayV <- seq(min(env.df$new_moon_yday), max(env.df$new_moon_yday), length = 30)
-moon_dayV_stnd <- (moon_dayV - mean(env.df$new_moon_yday))/sd(env.df$new_moon_yday)
-
-moon_emerge.df <- data.frame()
-for(i in 1:length(moon_dayV_stnd)){
-moon_linear <- post$day_peak_mu + post$b_moon * moon_dayV_stnd[i]
-w = plogis(post$hinge_k * (moon_dayV_stnd[i] - post$moon_cut))
-
-day_peak <- (1 - w) * moon_linear + w * (post$day_peak_mu + post$gamma_offset)
-moon_emerge.df <- rbind(moon_emerge.df, data.frame(moon_day = moon_dayV[i], 
-                                                   day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)))
-}
+# moon_dayV <- seq(min(env.df$new_moon_yday), max(env.df$new_moon_yday), length = 30)
+# moon_dayV_stnd <- (moon_dayV - mean(env.df$new_moon_yday))/sd(env.df$new_moon_yday)
+# 
+# moon_emerge.df <- data.frame()
+# for(i in 1:length(moon_dayV_stnd)){
+# moon_linear <- post$day_peak_mu + post$b_moon * moon_dayV_stnd[i]
+# w = plogis(post$hinge_k * (moon_dayV_stnd[i] - post$moon_cut))
+# 
+# day_peak <- (1 - w) * moon_linear + w * (post$day_peak_mu + post$gamma_offset)
+# moon_emerge.df <- rbind(moon_emerge.df, data.frame(moon_day = moon_dayV[i], 
+#                                                    day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)))
+# }
 
 
 p3 <- spread_draws(fit, day_peak[year]) %>% 
@@ -541,7 +541,7 @@ p3 <- spread_draws(fit, day_peak[year]) %>%
   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
   left_join(env_post |> select(-day_peak)) %>% 
   ggplot(aes(x = new_moon_yday, y = day_peak))+
-  stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CIs))+
+  # stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CIs))+
   geom_abline(slope = 1, intercept = 0, lty = 2)+
   stat_pointinterval(.width = CIs, aes(color = ATU_yday, group = year))+
   scale_fill_brewer(palette = "Greys", guide = "none")+
@@ -859,11 +859,11 @@ We define the thermal barrier period as the days between June 25 and September 3
 
 The onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years where water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the maximum onset date. This allowed us to have a continuous covariate scale for our models, rather than leaving onset date in these years as undefined. Duration is strongly negatively correlated with onset date (*r* = `r round(cor(thermal_barrier$onset, thermal_barrier$duration), 2)`), reflecting the fact that duration is likely to be longer when onset is early. To separate these effects, we used residual duration, from a linear model of duration as a function of onset date, which represents whether the barrier lasted longer or shorter than expected for its onset.
 
-Because water temperatures at Malott are not available prior to `r min(thermal_barrier$year)`, we treated thermal-barrier onset and residual duration as partially missing covariates and estimated them within the Bayesian spawner-to-fry recruitment model. For years with missing Malott temperature data, standardized onset date (mean = 0, sd = 1) was modelled as a linear function of mean June air temperature from the nearby USGS station USW00094197, with residual error estimated from the years with observed onset. Residual duration (standardized to mean 0 and sd 1) was imputed for missing years using a $\text{Normal}(0, 1)$ distribution.
+Because water temperatures at Malott are not available prior to `r min(thermal_barrier$year)`, we treated thermal-barrier onset and residual duration as partially missing covariates and estimated them within the Bayesian spawner-to-fry recruitment model. For years with missing Malott temperature data, standardized onset date (mean = 0, sd = 1) was modelled as a linear function of mean June air temperature from the nearby USGS station USW00094197, with residual error estimated from the years with observed onset. Residual duration (scaled by its standard deviation) was treated as partially missing and estimated within the Bayesian model by assuming a skew-normal distribution across years; missing values were inferred under this distribution.
 
 
 ### Incubation period flow and temperature
-We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
+We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on when spawners are most abundant on the spawning grounds and just prior to when emerging fry are most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver near, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
 
 ### Pre-spawn flushing flows
 We characterized pre‑spawn flushing conditions using daily discharge from the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January–September prior to each spawning season (Figure X). To summarize the extent to which flows were capable of mobilizing fine sediments within the spawning gravel, we constructed an annual flushing index:
@@ -925,7 +925,7 @@ ggplot(env.df, aes(x = onset, y = duration))+
 ```
 
 ## Directed acyclic graph and overall model structure
-The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 to aid computation and interpretability of effect sizes.
+The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R vr getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024]. Unless otherwise noted, all continuous variables used in the regression components of the model were standardized to a mean of 0 and a standard deviation of 1 (except where noted) to aid computation and interpretability of effect sizes.
 
 ```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red)."}
 
@@ -1028,42 +1028,36 @@ ggdag(dag_df, text = FALSE, node = FALSE) +
 
 
 ## Estimating a metric of yearly fry abundance
-The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year. The index is relative, because we cannot estimate the proportion of all emerging fry that are sampled. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. 
+The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year $\hat{N}_y^{\text{fry}}$. The index is relative, because we cannot estimate the proportion of all emerging fry that are sampled. To estimate this index, we model the number of fry emerging each day as a latent (i.e., unobserved) process that varies across years. The annual index of fry abundance $\hat{N}_y^{\text{fry}}$ is a latent state that is shared by both the emergence observation submodel (described in this section) and the spawner-to-fry recruitment submodel (described in subsequent section). The emergence data inform $\hat{N}_y^{\text{fry}}$, while the recruitment submodel provides its expectation as a function of spawner abundance and environmental covariates.
 
 To specify the latent emergence process, we assume that fry emerge over a range of days, with daily abundance following a normal distribution. We use a normal distribution to describe daily emergence as a phenomenological approximation of emergence patterns, rather than as a mechanistic model of individual emergence timing. The total number of fry, as well as the timing and spread of their emergence, vary across years such that:
 
-$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\, d_y^{\text{sd}}} \cdot 
+$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{2\pi\, d_y^{\text{sd}}\, h_y^{\text{sd}}} \cdot 
 \exp\!\left(
 - \frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2}
 \right),$$
 
 
-where $\hat{N}_{y,d}^{\text{fry}}$ is expected fry abundance in year $y$ on day $d$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ is day-of-year standardized so that $d = 1$ is the first survey date across all years. The parameter $d_y^{\text{peak}}$ represents the peak day of emergence and $d_y^{\text{sd}}$ represents the spread of emergence across days. Both the timing $d_y^{\text{peak}}$) and spread ($d_y^{\text{sd}}$) of emergence were treated as year-specific parameters drawn from multiyear distributions, allowing emergence phenology to vary amoung years while borrowing information across the full time series. By modelling total abundance, emergence timing, and emergence spread as distinct year‑specific components, interannual variation in phenology does not bias estimates of annual fry abundance.
+where $\hat{N}_{y,d}^{\text{fry}}$ is expected fry abundance in year $y$ on day $d$ and $\hat{N}_y^{\text{fry}}$ is the relative index of total fry abundance. Here, $d$ denotes a standardized day covariate, centered and scaled (sd = 1) across all survey dates. The parameter $d_y^{\text{peak}}$ represents the peak day of emergence and $d_y^{\text{sd}}$ represents the spread of emergence across days. The timing parameter $d_y^{\text{peak}}$ was modelled hierarchically across years using a normal distribution, while the spread parameter $d_y^{\text{sd}}$ was modelled hierarchically on the log scale to ensure positivity. 
 
-
-The timing of emergence has been shown to depend on the cumulative exposure of the eggs to temperature [@beacham1990]. In addition, Syilx traditional knowledge indicates that fry emergence is timed with the new moon---when moonlight is minimal---to reduce predation risk from visually oriented predators. It is therefore plausible that the effect of accumulated thermal units (ATU) and the date of the new moon may interactively influence emergence, such that fry may track the new moon date, but only when sufficient development has occurred. Thus, we modelled the annual timing of peak emergence, $d_y^{\text{peak}}$, as a normal distribution with a mean that varies by year according to standardized ($\mu$ = 0, $\sigma$ = 1) accumulated thermal units ($\text{ATU}_y$) and the date of the new moon ($\text{moon}_y$), defined as the first new moon following April 6, to align with the typical emergence period. This model includes a multiyear intercept $\mu_d^{\text{peak}}$ and a standard deviation $\sigma_d^{\text{peak}}$, which give it hierarchical structure across years: 
-
-$$d_y^{\text{peak}} \sim \text{Normal}(\mu_d^{\text{peak}} + \beta_d^{\text{ATU}} \cdot \text{ATU}_y + \beta_d^{\text{moon}} \cdot \text{moon}_y + \beta_d^{\text{ATU x moon}} \cdot (\text{ATU}_y \cdot \text{moon}_y), \sigma_d^{\text{peak}}).$$
-
-The coefficients $\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$ are the slopes describing the effect of accumulated thermal units, lunar timing, and their interaction, respectively, on peak emergence date.
-
-We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening, again as a phenomenological approximation of within-day emergence patterns. This hourly peak is accounted for when we link our observations to our expected daily emergence, rather than in our latent process. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for volume sampled and for the hourly emergence curve:
+We linked daily emergence to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Within each day, we assume that fry emergence follows a normal distribution, peaking in the evening, again as a phenomenological approximation of within-day emergence patterns. Within-day emergence is represented when linking daily abundance to set-level observations. Thus, the expected fry count for set $i$ depends on the daily emergence on day $d_i$ of year $y_i$, adjusting for volume sampled and for the hourly emergence curve:
 
 \begin{align*}
 N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{volume}} \cdot (\log(\text{volume}_i) - \log(100)) - \frac{(h_i - h_{y_i,d_i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{volume}} \cdot (\log(\text{volume}_i) - \log(100)) - \frac{(h_i - h_{i}^{\text{peak}})^2}{2 (h^{\text{sd}}_{y_i})^2} \right), \\
 \end{align*}
 
-where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h_i$ is the hour at which the set was taken, $h_{y_i,d_i}^{\text{peak}}$ is the hour of peak emergence for that year and day, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. Here, $h$ is the standardized hour of the day ($\mu = 0$, $\sigma = 1$).
+where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h_i$ is the hour at which the set was taken, $h_{i}^{\text{peak}}$ is the hour of peak emergence for that set, and $h^{\text{sd}}_{y_i}$ is the spread of emergence across hours. The yearly within-day emergence spread parameter $h^{\text{sd}}_{y}$ was modelled hierarchically across years on the log scale to ensure positivity. We used the mean centered ($\mu = 0$, $\sigma = 1$) hour in our model. 
 
-Missing sampled volume was imputed within the Bayesian model using a log-log regression of volume on soak time and daily flow rates observed in the Okanagan River near Oliver. The parameters were estimated based on the observed volumes and missing values were imputed based on these relationships. 
+Missing sampled volume was imputed within the Bayesian model using a lognormal regression of sampled volume on soak time and daily flow (both log-transformed). The parameters were estimated based on the observed volumes and missing values were imputed based on these relationships. 
 
-Observations from the survey crew suggest that emergence timing within each day may be linked to the timing of dusk. Thus, we modelled daily peak emergence, $h_{y,d}^{\text{peak}}$, as a normal distribution with a mean that varies with the timing of dusk $\text{dusk}_{y,d}$, along with a hierarchical multiyear mean $\mu_{h}^{\text{peak}}$ and standard deviation, $\sigma_{h}^{\text{peak}}$:
+Observations from the survey crew suggest that within-day emergence timing shifts with the timing of dusk. We therefore modelled the hour of peak detection as a year-specific hierarchical parameter:
 
-$$h_{y,d}^{\text{peak}} \sim \text{Normal}(\mu_{h}^{\text{peak}} + \beta_{h}^{\text{dusk}} \cdot \text{dusk}_{y,d}, \sigma_{h}^{\text{peak}}).$$
+$$h_{y}^{\text{peak}} \sim \text{Normal}(\mu_{h}^{\text{peak}}, \sigma_{h}^{\text{peak}}),$$
 
+with a set-specific shift due to dusk timing:
 
-We used weakly regularizing priors throughout. Regression slopes ($\beta_d^{\text{ATU}}$, $\beta_d^{\text{moon}}$, $\beta_d^{\text{ATU x moon}}$, $\beta_{h}^{\text{dusk}}$) and multiyear means ($\mu_{d}^{\text{peak}}$, $\mu_{h}^{\text{peak}}$) were given $\text{Normal}(0, 0.5)$ priors. The sample volume scaling parameter$\beta^{\text{volume}}$ was assigned a prior of $\text{Normal}(1, 1)$ to reflect the expectation that sampled fry should increase proportionally with sampled volume. Multiyear means for the spread parameters ($d_y^{\text{sd}}$, $h_y^{\text{sd}}$) were given $\text{Normal}(-0.5, 0.5)$ priors on the log scale to enforce positivity while favoring relatively narrow spreads. Standard deviations governing variation were given either $\text{Exponential}(1)$ or $\text{Exponential}(10)$ if they act on a linear ($\sigma_d^{\text{peak}}$) or log scale ($\sigma_{h}^{\text{peak}}$, $\sigma_d^{\text{sd}}$, $\sigma_h^{\text{sd}}$), respectively. The negative binomial overdispersion parameter $\phi^{\text{fry}}$ was assigned an $\text{Exponential}(1)$ prior to enforce positivity.
+$$ h_i^{\text{peak}} =  h_{y_i}^{\text{peak}} + \beta_{h}^{\text{dusk}} \cdot \text{dusk}_i.$$
 
 
 ## Estimating factors influencing spawner-to-fry production
@@ -1082,18 +1076,13 @@ The parameter $\alpha_0^{\text{sf}}$ is the density-independent production rate 
 We model the effect of upstream migration thermal conditions on spawner-to-fry production as a reduction in per-capita spawner reproductive effectiveness. We use a logistic function to represent this effect, reflecting the assumption that delayed thermal-barrier onset can increase effectiveness only up to the point at which all returning salmon have successfully migrated, beyond which additional delays confer no further benefit:
 
 $$p_y^{\text{eff}} = \operatorname{inv\_logit}(\alpha_0^{\text{eff}} +\beta^{\text{onset}} \cdot \text{onset}_y + \beta^{\text{dur}} \cdot \text{dur}_y),$$ 
-where $\alpha_0^{\text{eff}}$ represents baseline per-capita spawner effectiveness on the logit scale under average conditions, $\beta^{\text{onset}}$ describes the effect of thermal-barrier onset date, and $\beta^{\text{dur}}$ is the additional effect of barrier duration beyond that explained by onset timing.
+where $\alpha_0^{\text{eff}}$ represents baseline per-capita spawner effectiveness on the logit scale under average conditions, $\beta^{\text{onset}}$ describes the effect of thermal-barrier onset date, and $\beta^{\text{dur}}$ is the additional effect of barrier duration beyond that explained by onset timing. We parameterized this logistic relationship using a transition-width parameter that controls how rapidly spawner effectiveness changes across years. The onset and residual-duration slope coefficients were scaled by this transition width. 
 
 ### Density dependence and pre-spawn flushing
 We assume that density dependence during spawner-to-fry recruitment occurs primarily through crowding on the spawning grounds. As spawner abundance increases, there is greater competition for suitable spawning sites. This pushes spawners into suboptimal gravel and can lead to superimposition, whereby later-arriving spawners build their redds on top of those built by earlier-arriving fish, reducing egg survival through disturbance and displacement [@burgner1969; @essington2000]. Thus, we assume that the effects of pre-spawn flushing of fine sediments should impact the population by changing the amount and quality of available spawning gravel [@moring1982; @reiser1989]. 
 
-We summarized pre-spawn flushing conditions using an annual index $\text{flush}_y$ derived from daily discharge in 
-
-
-We model this by allowing the density-dependence parameter $\beta_y^{\text{sf}}$ to vary as a function of an annual pre-spawn flushing index: 
-$$\log \beta_y^{\text{sf}} = \beta_0^{\text{sf}} + \beta^{\text{flush}} \cdot \text{flush}_y.$$
-
-The index, $\text{flush}_y$, is derived from daily discharge prior to spawning and represents the cumulative number of days that discharge exceeded a threshold flow, with the threshold estimated within the Bayesian model (see Supplementary Materials). 
+We modelled annual variation in density dependence as a function of the flushing index defined above. Specifically, we allowed the density-dependence parameter to vary log-linearly with the standardized flushing index:
+$$\log \beta_y^{\text{sf}} = \beta_0^{\text{sf}} + \beta^{\text{flush}} \cdot \left(\frac{\text{flush}_y}{\operatorname{sd}(\text{flush})}\right).$$
 
 
 ### Process error and spawner uncertainty
@@ -1104,10 +1093,9 @@ To propagate uncertainty in spawner abundance, we model log spawner abundance $\
 
 $$\log N_y^{\text{spawners}} \sim \text{Normal}(\hat{\mu}_y^{\text{spawners}}, \hat{\sigma}_y^{\text{spawners}})$$
 
-where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @thompsoninreview.
+where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @thompsoninreview. Full prior specifications are provided in ADD Table REF.
 
-### Priors
-We used weakly regularizing priors for all parameters in this model as well. The intercept was assigned a $\text{Normal}(-3, 1)$, chosen to align with the observed scale of the fry index relative to spawner abundance. All slope parameters ($\beta^{\text{onset}}$, $\beta^{\text{dur}}$, $\beta^{\text{FWMT}}$, $\beta^{\text{ATU}}$) were given $\text{Normal}(0, 0.5)$ priors. We assigned the density-dependent rate parameter $\beta^{\text{sf}}$ a prior of $\text{LogNormal}(0, 0.5)$. We assigned the density-dependent shape parameter $\Theta^{\text{sf}}$ a prior of $\text{Normal}(1, 0.1)$, centering the model on a Beverton-Holt form unless the data provide strong evidence otherwise. The process error parameter $\sigma_{\text{proc}}^{\text{sf}}$ was assigned an $\text{Exponential}(1)$ prior. 
+ 
 
 
 # Results
@@ -1135,8 +1123,125 @@ fig_spawn_fry
 \beginsupplement
 
 # Supplementary Materials
-## Details of the pre-spawn flushing model
+## Priors
+```{r priorstable, echo=FALSE, message=FALSE, warning=FALSE}
+priors_tbl <- tibble::tribble(
+  ~Parameter, ~Description, ~Prior, ~Scale,
 
+  # --- Spawner-to-fry recruitment ---
+  "$\\alpha_0^{\\text{sf}}$",
+  "Baseline density-independent productivity (intercept for $\\log\\alpha_y^{\\text{sf}}$)",
+  sprintf("$\\mathrm{Normal}(%s,\\, %s)$", dat_list$alpha_sf_prior, dat_list$alpha_sf_sigma_prior),
+  "log",
+
+  "$\\beta_0^{\\text{sf}}$",
+  "Baseline density-dependence rate (intercept for $\\log\\beta_y^{\\text{sf}}$)",
+  sprintf("$\\mathrm{Normal}(%s,\\, %s)$", dat_list$beta_sf_prior, dat_list$beta_sf_sigma_prior),
+  "log",
+
+  "$\\sigma_{\\text{proc}}^{\\text{sf}}$",
+  "Process SD for annual fry index around recruitment expectation",
+  sprintf("$\\mathrm{Exponential}(%s)$", dat_list$sigma_sf_prior),
+  "log",
+
+  "$N_y^{\\text{spawners}}$", "Latent spawner abundance (annual)",
+  "$\\mathrm{LogNormal}(\\hat{\\mu}_y^{\\text{spawners}},\\, \\hat{\\sigma}_y^{\\text{spawners}})$",
+  "natural",
+
+  "$\\beta^{\\text{FWMT}}$", "Effect of FWMT exceedance on $\\log\\alpha_y^{\\text{sf}}$",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+
+  "$\\beta^{\\text{ATU}}$", "Effect of incubation ATU on $\\log\\alpha_y^{\\text{sf}}$",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+
+  "$\\beta^{\\text{flush}}$", "Effect of pre-spawn flushing on $\\log\\beta_y^{\\text{sf}}$",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+
+  # --- Thermal barrier effects on effective spawners ---
+  "$\\alpha_0^{\\text{eff}}$", "Baseline per-capita spawner effectiveness (logit scale)",
+  "$\\mathrm{Normal}(0,\\, 0.25)$", "logit",
+
+  "$w_{\\text{eff}}$", "Transition width controlling how rapidly $p_y^{\\text{eff}}$ changes across years",
+  "$\\mathrm{LogNormal}(\\log(2.5),\\, 0.4)$", "positive",
+
+  "$\\beta^{\\text{onset}}$", "Effect of standardized barrier onset on $p_y^{\\text{eff}}$ (scaled by $w_{\\text{eff}}$ in the model)",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
+
+  "$\\beta^{\\text{dur}}$", "Effect of residual barrier duration on $p_y^{\\text{eff}}$ (scaled by $w_{\\text{eff}}$ in the model)",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
+
+  # --- Emergence observation model ---
+  "$\\beta^{\\text{volume}}$", "Effect of sampled volume on log expected catch",
+  "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
+
+  "$\\beta_{h}^{\\text{dusk}}$", "Effect of dusk timing on within-night peak hour",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "linear",
+
+  "$\\mu_{h}^{\\text{peak}}$", "Multiyear mean of within-night peak hour",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized hour",
+
+  "$\\sigma_{h}^{\\text{peak}}$", "Across-year SD of within-night peak hour",
+  "$\\mathrm{Exponential}(10)$", "linear",
+
+  "$\\mu_{h}^{\\text{sd}}$", "Multiyear mean of within-night spread (log scale)",
+  "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "log",
+
+  "$\\sigma_{h}^{\\text{sd}}$", "Across-year SD of within-night spread (log scale)",
+  "$\\mathrm{Exponential}(10)$", "log",
+
+  "$\\mu_{d}^{\\text{peak}}$", "Multiyear mean of peak emergence day",
+  "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized day",
+
+  "$\\sigma_{d}^{\\text{peak}}$", "Across-year SD of peak emergence day",
+  "$\\mathrm{Exponential}(1)$", "linear",
+
+  "$\\mu_{d}^{\\text{sd}}$", "Multiyear mean of day spread (log scale)",
+  "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "log",
+
+  "$\\sigma_{d}^{\\text{sd}}$", "Across-year SD of day spread (log scale)",
+  "$\\mathrm{Exponential}(1)$", "log",
+
+  "$\\phi^{\\text{fry}}$", "Negative binomial overdispersion (NB2)",
+  "$\\mathrm{LogNormal}(\\log(20),\\, 0.5)$", "positive",
+
+  # --- Sample volume model (imputation) ---
+  "$a_{\\text{vol}}$", "Intercept for log(sample volume) model",
+  "$\\mathrm{Normal}(0,\\, 2)$", "log",
+
+  "$\\beta_{\\text{soak}}$", "Effect of log(soak time) on log(sample volume)",
+  "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
+
+  "$\\beta_{\\text{flow}}$", "Effect of log(sample flow) on log(sample volume)",
+  "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
+
+  "$\\sigma_{\\text{vol}}$", "Residual SD for log(sample volume) model",
+  "$\\mathrm{Exponential}(10)$", "log",
+
+  # --- Thermal onset model (imputation / covariate model) ---
+  "$a_{\\text{onset}}$", "Intercept for standardized onset model",
+  "$\\mathrm{Normal}(0,\\, 0.1)$", "standardized",
+
+  "$\\beta_{\\text{air}}$", "Effect of June air temperature on standardized onset",
+  "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "standardized",
+
+  "$\\sigma_{\\text{onset}}$", "Residual SD for standardized onset model",
+  "$\\mathrm{Exponential}(1)$", "positive",
+
+  # --- Residual duration distribution (imputation / covariate model) ---
+  "$\\xi_{\\text{dur}}$", "Skew-normal location for residual duration (scaled)",
+  "$\\mathrm{Normal}(0.45,\\, 0.2)$", "scaled",
+
+  "$\\omega_{\\text{dur}}$", "Skew-normal scale for residual duration (scaled)",
+  "$\\mathrm{Normal}(1.30,\\, 0.2)$", "positive",
+
+  "$\\alpha_{\\text{dur}}$", "Skew-normal shape for residual duration (scaled)",
+  "$\\mathrm{Normal}(-2.4,\\, 1.0)$", "linear"
+)
+
+kable(priors_tbl, booktabs = TRUE, escape = FALSE,
+      caption = "Prior distributions for all parameters in the joint Bayesian model.") %>%
+  kable_styling(latex_options = c("HOLD_position", "scale_down"))
+```
 
 ## Supplementary Figures
 <!-- switch to map that includes vertical drop structures -->
