@@ -27,7 +27,7 @@ data {
   array[N] int day; //observation day index
   vector[Y] new_moon_date; //date of the new moon, standardized
   vector[N] dusk; //dusk on day of observation
-  array[Y] int exceeded_FWMT; //index for whether or not FWMT range was exceeded 1 for no, 2 for yes
+  array[Y] int exceeded_FWMT; //index for whether or not FWMT range was exceeded 0 for no, 1 for yes
   
   vector[Y] spawner_ln_est;
   vector[Y] spawner_ln_sd;
@@ -89,20 +89,15 @@ parameters {
   real<lower=0> sigma_volume;
   
   real b_volume;
-  real b_dusk;
-  
-  real hour_peak_mu;
-  real hour_sd_mu;
+
+  real hour_peak;
   real day_peak_mu;
   real day_sd_mu;
   
-  real<lower=0> hour_peak_sigma;
-  real<lower=0> hour_sd_sigma;
+  real<lower=0> hour_sd;
   real<lower=0> day_peak_sigma;
   real<lower=0> day_sd_sigma;
   
-  vector[Y] hour_peak_z;
-  vector[Y] hour_sd_z;
   vector[Y] day_peak_z;
   vector[Y] day_sd_z;
   
@@ -138,7 +133,6 @@ transformed parameters{
   thermal_onset_scaled = (thermal_onset_merge - onset_mean) / onset_sd;
   
   //non-centered priors
-  vector[Y] hour_sd;
   vector[Y] day_peak;
   vector[Y] day_sd;
   vector[Y] fresh_days;
@@ -146,8 +140,7 @@ transformed parameters{
   vector[Y] effective_spawners;
   vector[Y] eff_spawner_prop;
   
-  hour_sd = exp(hour_sd_mu + hour_sd_sigma * hour_sd_z);
-  
+
   day_peak = day_peak_mu + day_peak_sigma * day_peak_z;  
   
   day_sd = exp(day_sd_mu + day_sd_sigma * day_sd_z);
@@ -180,7 +173,7 @@ transformed parameters{
   
   vector[Y] peak_fry;
   for (y in 1:Y){
-    peak_fry[y] = total_fry_ln[y] - log((sqrt(2 * pi()) * day_sd[y] * sqrt(2 * pi()) * hour_sd[y]));
+    peak_fry[y] = total_fry_ln[y] - log((sqrt(2 * pi()) * day_sd[y] * sqrt(2 * pi()) * hour_sd));
   }
   
   matrix[Y, D] emerging_fry_ln;
@@ -239,14 +232,10 @@ model {
   
   //fry observation model
   b_volume ~ normal(1, 0.5);
-  b_dusk ~ normal(0, 0.5);
+  //b_dusk ~ normal(0, 0.5);
   
-  hour_peak_mu ~ normal(0, 0.5);
-  hour_sd_mu ~ normal(-0.5, 0.5);
-  hour_peak_sigma ~ exponential(10);
-  hour_sd_sigma ~ exponential(10);
-  hour_peak_z ~ normal(0, 1);
-  hour_sd_z ~ normal(0, 1);
+  hour_peak ~ normal(0, 0.5);
+  hour_sd ~ exponential(1);
   
   day_peak_mu ~ normal(0, 0.5);
   day_sd_mu ~ normal(-0.5, 0.5);
@@ -258,9 +247,7 @@ model {
   emerg_phi ~ lognormal(log(20),0.5);
   
   for(i in 1:N){
-    real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] +
-    b_dusk * dusk[i];
-    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + b_volume * (log(volume_merge[i]) - log(100));
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd^2) + b_volume * (log(volume_merge[i]) - log(100));
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     fry_obs[i] ~ neg_binomial_2(emerge_mu, emerg_phi);
   }
@@ -269,8 +256,7 @@ model {
 generated quantities{
   vector[N] log_lik;
   for(i in 1:N){
-    real hour_peak = hour_peak_mu + hour_peak_sigma * hour_peak_z[year[i]] + b_dusk * dusk[i];
-    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd[year[i]]^2) + b_volume * (log(volume_merge[i]) - log(100));
+    real obs_offset = -((hour[i] - hour_peak)^2) / (2*hour_sd^2) + b_volume * (log(volume_merge[i]) - log(100));
     real emerge_mu = exp(emerging_fry_ln[year[i], day[i]] + obs_offset);
     log_lik[i] = neg_binomial_2_lpmf(fry_obs[i] | emerge_mu, emerg_phi);
   }
