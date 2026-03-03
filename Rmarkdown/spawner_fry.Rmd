@@ -115,6 +115,7 @@ stand <- function(x){
 }
 
 CrIs <- c(0.66, 0.95)
+year_breaks <- seq(2002, 2030, by = 4)
 ```
 
 ```{r load_emergence, include = FALSE, warning=FALSE}
@@ -500,21 +501,19 @@ env_post <- left_join(env_post, spread_draws(fit, emerging_fry_ln[year, day]) %>
                         group_by(year, day) %>% 
                         summarise(emerge_fry_apex = median(exp(emerging_fry_ln))) %>% 
                         group_by(year) %>% 
-                        filter(emerge_fry_apex == max(emerge_fry_apex)) %>% select(-day))
+                        filter(emerge_fry_apex == max(emerge_fry_apex)) %>% select(-day)) |> 
+  mutate(brood_year = year - 1)
 
 p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>% 
-  mutate(year = init_year + year) %>% 
+  mutate(brood_year = init_year + year - 1) %>% 
   mutate(date_stnd = day + min(emergence_select$yday) - 1) %>% 
-  left_join(env_post) %>% 
-  group_by(year, date_stnd, new_moon_yday) %>% 
+  group_by(brood_year, date_stnd) %>% 
   summarise(fry = median(exp(emerging_fry_ln))) %>% 
-  ggplot(aes(x = date_stnd, y = fry, group = year, color = year))+
+  ggplot(aes(x = date_stnd, y = fry, group = brood_year, color = brood_year))+
   geom_line(size = 1)+
-  #geom_text(data = env_post, aes(x = day_peak_median, y = emerge_fry_apex+10, color = NULL, label = year))+
-  #geom_textline(aes(label = year), hjust = 0.5, size = 3, linewidth = 1) +
   xlab("")+
   ylab("# of emerging fry (relative)")+
-  scale_color_viridis_b(breaks = seq(2002, 2025, by = 4), option = "D", limits = c(2002, 2024), name = "")+
+  scale_color_viridis_b(breaks = seq(2002, 2025, by = 4), option = "D", limits = c(2002, 2022), name = "Brood year")+
   scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
   theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))+
   scale_x_continuous(
@@ -533,7 +532,7 @@ p2 <- spread_draws(fit, day_peak[year]) %>%
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"),
     breaks = seq(92, 126, length = 5)
   )+
-  scale_x_continuous(breaks = seq(2002, 2030, by = 4))+
+  scale_x_continuous(breaks = year_breaks)+
   xlab("Brood year")
 
 p3 <- spread_draws(fit, total_fry_ln[year]) |> 
@@ -542,7 +541,7 @@ p3 <- spread_draws(fit, total_fry_ln[year]) |>
   stat_summary(fun = median, geom = "line")+
   stat_pointinterval()+
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"))+
-  scale_x_continuous(breaks = seq(2002, 2030, by = 4))+
+  scale_x_continuous(breaks = year_breaks)+
   labs(x = "Brood year", y = "Fry abundance (relative)")
 
 p4 <- spread_draws(fit, day_peak[year]) %>% 
@@ -569,7 +568,7 @@ p4 <- spread_draws(fit, day_peak[year]) %>%
 fig_fry_emerge <- p1 / p2 / p3+
   plot_annotation(tag_levels = "A")
 
-fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect of the timing of dusk (dusk), the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU) on emergence timing. Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal units (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 66% and 95% credible intervals.")
+fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance estimated in the fry-emergence submodel. (A) The estimated emergence relative abundance across dates where each line represents a single year. (B) Estimated peak fry-emergence day by year. (C) Estimated relative fry abundance index by year. Points and error bars in panels B and C show the posterior medians with 66% and 95% credible intervals.")
 
 ```
 
@@ -708,7 +707,8 @@ p1 <- FWMT_BH_summary.df |>
   scale_color_manual(values = c("red", "dodgerblue2"), name = "FWMT range", guide = guide_legend(override.aes = list(size = 4)))+
   scale_linetype_manual(values = c(3,1), name = "FWMT range" , guide = guide_legend(override.aes = list(size = 0.1)))+
   scale_x_log10(labels = label_number(scale = 1e-3, suffix = "k"), name = "Spawner abundance (thousands)")+
-  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"), name = "Fry abundance (relative)")+
+  theme(legend.position = c(0, 1),legend.justification = c(-0.01, 1.01), legend.box = "horizontal")
 
 
 p3 <- fry_percent_change %>%
@@ -754,7 +754,7 @@ fig_spawn_fry <- p1 / (p0 + p3) +
   plot_layout(height = c(1,0.8), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). The points show the estimates for each year labelled by spawning/brood year and coloured by the date of the onset of the thermal barrier (years where thermal barrier could not be estimated in grey).  The lines contrast an early and late thermal barrier scenario (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; yellow; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],"; purple), with solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside, across the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). Panel B shows the posterior marginal effect of onset date on per-captita spawner effectiveness. Panel C shows the estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
+fig_spawn_fry_cap <- paste0("Estimates from the spawner-fry-recruitment submodel. (A) Estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). Points (and their error bars) show annual posterior estimates of fry abundance coloured by thermal barrier onset date; brood-year labels are coloured by FWMT range. The lines show posterior median spawner–fry curves under two thermal barrier onset scenarios (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") and two FWMT scenarios (solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside) for the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). (B) Posterior relationship between thermal barrier onset date and per-capita spawner effectiveness. (C) Estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
 ,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
@@ -815,7 +815,7 @@ where $Q_{y,d}$ is the discharge on day $d$ in year $y$ and $D_y$ includes all d
 
 We selected values for these parameters based on observations of gravel mobility in the Okanagan River spawning grounds, which show that movement begins to occur at around 28 $\mathrm{m}^3/\mathrm{s}$ (aligned with the FWMT upper threshold for incubation flows), with full movement occurring at around 70 $\mathrm{m}^3/\mathrm{s}$ [@summitenvironmentalconsultantsltd.2002]. Thus, we set $Q^*$ at the discharge corresponding to the approximate midpoint of this transition (`r dat_list$freshet_threshold` $\mathrm{m}^3/\mathrm{s}$), and $k_{\text{flush}}$ to produce a smooth logistic response spanning the observed range of gravel movement. 
 
-```{r envfig, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=5.5, fig.pos='center',fig.cap = "Environmental covariates"}
+```{r envfig, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=7, fig.pos='center',fig.cap = "Annual environmental covariates used in the spawner-to-fry production model. (A) Date of the thermal barrier onset in the lower Okanagan River. (B) Linear relationship between thermal barrier onset date and duration (days) used to derive duration residuals. (C) Residual barrier duration (days), after accounting for onset timing. (D) Pre-spawn flushing index. (E) Binary indicator of whether the FWMT range was maintained during incubation. (F) Accumulated thermal units (ATU) during incubation. Environmental data are shown corresponding to the brood year that would be impacted. Lines show observed values or posterior medians in years with imputed data. Intervals (66% and 95%) are shown only for imputed values."}
 spread_draws(fit, thermal_onset_merge[y]) |> 
   mutate(year = y + init_year - 1) |> 
 ggplot(aes(x = year, y = thermal_onset_merge))+
@@ -826,7 +826,8 @@ ggplot(aes(x = year, y = thermal_onset_merge))+
     labels = function(d) format(as.Date(d - 1, origin = "2020-01-01"), "%b %d"),
     breaks = scales::pretty_breaks(n = 5),
   )+
-  
+  scale_x_continuous(breaks = year_breaks)+
+
 ggplot(env.df, aes(x = onset, y = duration))+
   geom_smooth(method = "lm", se = FALSE, color = "black")+
   geom_point()+
@@ -843,6 +844,7 @@ ggplot(env.df, aes(x = onset, y = duration))+
   stat_pointinterval(pch = NA)+
   stat_summary(fun = median, geom = "line")+
   labs(x = "Brood year", y = "Barrier duration (resid. days)")+
+  scale_x_continuous(breaks = year_breaks)+
 
   spread_draws(fit, fresh_days[y]) |> 
   mutate(year = y + init_year - 1) |> 
@@ -850,41 +852,44 @@ ggplot(env.df, aes(x = onset, y = duration))+
   stat_pointinterval(pch = NA)+
   stat_summary(fun = median, geom = "line")+
   labs(x = "Brood year", y = "Pre-spawn flushing index")+
-  
-  ggplot(env.df, aes(x = brood_year, y = non_range_days == 0)) +
-  geom_point(size = 2) +
-  scale_y_discrete(limits = c(FALSE, TRUE),
-                   labels = c("No", "Yes")) +
+  scale_x_continuous(breaks = year_breaks)+
+
+  ggplot(env.df, aes(x = brood_year, y = as.numeric(non_range_days == 0))) +
+  geom_line()+
+  #geom_point(size = 2) +
+  scale_y_continuous(breaks = c(0, 1), labels = c("No", "Yes"), limits = c(0, 1)) +
   labs(x = "Brood year", y = "FWMT range maintained")+
-  
+  scale_x_continuous(breaks = year_breaks)+
+
   ggplot(env.df, aes(x = brood_year, y = ATU))+
   geom_line()+
   labs(x = "Brood year", y = "Incubation ATUs")+
+  scale_x_continuous(breaks = year_breaks)+
   
-  plot_annotation(tag_levels = "A")
+  plot_annotation(tag_levels = "A")+
+  plot_layout(ncol = 2)
 
 ```
 
 ## Directed acyclic graph and overall model structure
 The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R version getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024].
 
-```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red)."}
+```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red). NOTE: this is a placeholder until I can produce a nicer looking DAG."}
 
 dag <- dagitty('dag {
 bb="0,0,1,1"
 "Okanagan river temperature (migration period)" [pos="0.463,0.036"]
 "hour of peak emergence" [pos="0.622,0.669"]
 "density dependence" [pos="0.288,0.378"]
-"dusk time" [pos="0.629,0.509"]
 "effective spawners" [pos="0.465,0.288"]
 "day of peak emergence" [pos="0.332,0.739"]
-"hour sampled" [pos="0.515,0.670"]
+"hour sampled" [pos="0.515,0.65"]
 "pre-spawn flushing" [pos="0.112,0.348"]
 "river flow during sampling" [pos="0.831,0.510"]
-"soak time" [pos="0.725,0.508"]
-"thermal barrier duration (residual)" [pos="0.537,0.139"]
-"thermal barrier onset" [pos="0.381,0.133"]
-"volume sampled" [pos="0.733,0.669"]
+"soak time" [pos="0.65,0.508"]
+"thermal barrier duration (residual)" [pos="0.537,0.15"]
+"thermal barrier onset" [pos="0.381,0.13"]
+"volume sampled" [pos="0.733,0.65"]
 FWMT_exceedance [pos="0.108,0.508"]
 emergence_sd [pos="0.300,0.882"]
 n_fry_day [pos="0.463,0.830"]
@@ -895,7 +900,6 @@ n_spawners [pos="0.158,0.215"]
 "Okanagan river temperature (migration period)" -> "thermal barrier onset"
 "hour of peak emergence" -> n_fry_set
 "density dependence" -> n_fry_total
-"dusk time" -> "hour of peak emergence"
 "effective spawners" -> n_fry_total
 "day of peak emergence" -> n_fry_day
 "hour sampled" -> n_fry_set
@@ -936,7 +940,7 @@ dag_df <- tidy_dagitty(dag) %>%
                 "Okanagan river temperature (migration period)") ~ "environmental driver",
     
     # Observation / sampling effort variables
-    name %in% c("hour sampled", "dusk time",
+    name %in% c("hour sampled",
                 "volume sampled", "soak time",
                 "river flow during sampling") ~ "sampling / observation",
     
@@ -944,10 +948,10 @@ dag_df <- tidy_dagitty(dag) %>%
   ))
 
 my_colors <- c(
-  "observed response"      = "#d62728",  # red
-  "latent / process"       = "#9467bd",  # purple
-  "environmental driver"   = "#1f77b4",  # blue
-  "sampling / observation" = "#7f7f7f",  # grey
+  "observed response"      = "#d62728",
+  "latent / process"       = "#9467bd",
+  "environmental driver"   = "#1f77b4",
+  "sampling / observation" = "#7f7f7f", 
   "other"                  = "black"
 )
 
