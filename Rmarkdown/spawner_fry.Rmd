@@ -114,7 +114,7 @@ stand <- function(x){
   (x - mean(x, na.rm = TRUE))/sd(x, na.rm = TRUE)
 }
 
-CIs <- c(0.66, 0.95)
+CrIs <- c(0.66, 0.95)
 ```
 
 ```{r load_emergence, include = FALSE, warning=FALSE}
@@ -450,8 +450,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 200,
-  iter_warmup = 200,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
   seed = 7, 
   adapt_delta = 0.99
 )
@@ -513,37 +513,46 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   #geom_text(data = env_post, aes(x = day_peak_median, y = emerge_fry_apex+10, color = NULL, label = year))+
   #geom_textline(aes(label = year), hjust = 0.5, size = 3, linewidth = 1) +
   xlab("")+
-  ylab("# of emerging fry (relative abund.)")+
-  scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", limits = c(2000, 2025), name = "")+
+  ylab("# of emerging fry (relative)")+
+  scale_color_viridis_b(breaks = seq(2002, 2025, by = 4), option = "D", limits = c(2002, 2024), name = "")+
   scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
-  #theme(legend.position = c(0.95, 0.95), legend.justification = c(1, 1))+
+  theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))+
   scale_x_continuous(
     name = "",
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
   )
 
-# moon_dayV <- seq(min(env.df$new_moon_yday), max(env.df$new_moon_yday), length = 30)
-# moon_dayV_stnd <- (moon_dayV - mean(env.df$new_moon_yday))/sd(env.df$new_moon_yday)
-# 
-# moon_emerge.df <- data.frame()
-# for(i in 1:length(moon_dayV_stnd)){
-# moon_linear <- post$day_peak_mu + post$b_moon * moon_dayV_stnd[i]
-# w = plogis(post$hinge_k * (moon_dayV_stnd[i] - post$moon_cut))
-# 
-# day_peak <- (1 - w) * moon_linear + w * (post$day_peak_mu + post$gamma_offset)
-# moon_emerge.df <- rbind(moon_emerge.df, data.frame(moon_day = moon_dayV[i], 
-#                                                    day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)))
-# }
+p2 <- spread_draws(fit, day_peak[year]) %>% 
+  mutate(brood_year = init_year + year - 1) %>%
+  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) |> 
+  ggplot(aes(x = brood_year, y = day_peak))+
+  stat_summary(fun = median, geom = "line")+
+  stat_pointinterval()+
+  scale_y_continuous(
+    name = "Peak emergence",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"),
+    breaks = seq(92, 126, length = 5)
+  )+
+  scale_x_continuous(breaks = seq(2002, 2030, by = 4))+
+  xlab("Brood year")
 
+p3 <- spread_draws(fit, total_fry_ln[year]) |> 
+  mutate(brood_year = year + init_year - 1) |> 
+  ggplot(aes(x = brood_year, y = exp(total_fry_ln)))+
+  stat_summary(fun = median, geom = "line")+
+  stat_pointinterval()+
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"))+
+  scale_x_continuous(breaks = seq(2002, 2030, by = 4))+
+  labs(x = "Brood year", y = "Fry abundance (relative)")
 
-p3 <- spread_draws(fit, day_peak[year]) %>% 
+p4 <- spread_draws(fit, day_peak[year]) %>% 
   mutate(year = init_year + year) %>%
   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
   left_join(env_post |> select(-day_peak)) %>% 
   ggplot(aes(x = new_moon_yday, y = day_peak))+
-  # stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CIs))+
+  # stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CrIs))+
   geom_abline(slope = 1, intercept = 0, lty = 2)+
-  stat_pointinterval(.width = CIs, aes(color = ATU_yday, group = year))+
+  stat_pointinterval(.width = CrIs, aes(color = ATU_yday, group = year))+
   scale_fill_brewer(palette = "Greys", guide = "none")+
   #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
   scale_color_viridis_c(option = "B", direction = -1, end = 0.9, 
@@ -557,62 +566,7 @@ p3 <- spread_draws(fit, day_peak[year]) %>%
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
   )
 
-
-
-# p2 <- bind_rows(
-#   gather_draws(fit, b_ATU),
-#   gather_draws(fit, b_moon), 
-#   gather_draws(fit, b_moonxATU),
-#   gather_draws(fit, b_dusk)) %>% 
-#   mutate(.variable = case_when(.variable == "b_dusk" ~ "dusk", .variable == "b_ATU" ~ "ATU", .variable == "b_moon" ~ "moon", .variable == "b_moonxATU" ~ "moon\nx ATU")) %>% 
-#   mutate(.variable = factor(.variable, levels = c("dusk","moon", "ATU", "moon\nx ATU"), ordered= TRUE)) %>% 
-#   ggplot(aes(x = .variable, y = .value))+
-#   geom_hline(yintercept = 0, lty = 2)+
-#   stat_pointinterval(.width = CIs)+
-#   ylab("Estimated effect on emergence timing")+
-#   xlab("Covariate")
-
-
-# p3 <- spread_draws(fit, day_peak[year]) %>% 
-#   mutate(year = init_year + year) %>%
-#   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-#   left_join(env_post |> select(-day_peak)) %>% 
-#   mutate(day_peak_stnd = as.Date(day_peak, origin = "2020-01-01")) %>%
-#   ggplot(aes(x = new_moon_yday, y = day_peak, color = ATU_yday, group = year))+
-#   geom_abline(slope = 1, intercept = 0, lty = 2)+
-#   stat_pointinterval(.width = CIs)+
-#   #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-#   scale_color_viridis_c(option = "B", guide = "none", direction = -1, end = 0.9)+
-#   scale_y_continuous(
-#     name = "Estimated peak emergence date",
-#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-#   ) +
-#   scale_x_continuous(
-#     name = "Date of new moon",
-#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-#   ) 
-
-
-# p4 <- spread_draws(fit, day_peak[year]) %>% 
-#   mutate(year = init_year + year) %>%
-#   mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-#   left_join(env_post |> select(-day_peak)) %>% 
-#   ggplot(aes(x = ATU_yday, y = day_peak, color = year, group = year))+
-#   stat_pointinterval(.width = CIs)+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-#   scale_color_viridis_b(breaks = seq(2000, 2025, by = 5), option = "D", guide = "none", limits = c(2000, 2025))+
-#   scale_y_continuous(
-#     name = "Estimated peak emergence date",
-#     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-#   ) +
-#   scale_x_continuous(
-#     name = expression("Accumulated thermal units ("*degree*C*")")
-#   )
-
-# fig_fry_emerge <- (p1 + p2 + plot_layout(widths = c(1, 0.3))) / 
-#   (p3 + p4) + 
-#   plot_annotation(tag_levels = "A")
-
-fig_fry_emerge <- p1 / p3 +
+fig_fry_emerge <- p1 / p2 / p3+
   plot_annotation(tag_levels = "A")
 
 fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance and factors influencing emergence timing. Panel A shows the estimated emergence relative abundance across dates where each line represents a single year. Panel B shows the estimated coefficients for the effect of the timing of dusk (dusk), the date of first new moon after ", sub("^0", "", format(start_date, "%B %d")), " (moon), the accumulated thermal units (ATU) since ", incubation_start, ", and the interaction between new moon date and ATUs (moon x ATU) on emergence timing. Panels C and D show the relationships between the date of the new moon (C) or the accumulated thermal units (D) and the estimated peak emergence date across years. The dashed line in panel C shows the 1:1 relationship between the date of the new moon and the estimated peak fry emergence date. The colours in panels A, C, and D show the 5 year period each year falls within. Points and error bars in panels B--D show the posterior medians with 66% and 95% credible intervals.")
@@ -713,12 +667,6 @@ perc_change <- function(treatment, baseline){
   (exp(log_rr(treatment, baseline))-1) * 100
 }
 
-# fry_log_ratios <- data.frame(draw = 1:length(mu_FWMT), 
-#                                  freshet = log_rr(mu_fresh, mu_no_fresh),
-#                                  FWMT = log_rr(mu_FWMT, mu_noFWMT), 
-#                                  ATU = log_rr(mu_highATU, mu_lowATU), 
-#                                  onset = log_rr(mu_early_onset,mu_late_onset), 
-#                                  duration = log_rr(mu_long_dur, mu_short_dur))
 
 
 fry_percent_change <- data.frame(draw = 1:length(mu_FWMT), 
@@ -728,12 +676,6 @@ fry_percent_change <- data.frame(draw = 1:length(mu_FWMT),
                                  onset = perc_change(mu_early_onset,mu_late_onset), 
                                  duration = perc_change(mu_long_dur, mu_short_dur))
 
-# fry_ratios <- data.frame(draw = 1:length(mu_FWMT), 
-#                          freshet = mu_fresh/mu_no_fresh,
-#                                  FWMT = mu_noFWMT/mu_FWMT, 
-#                                  ATU = mu_lowATU/mu_highATU, 
-#                                  onset = mu_early_onset/mu_late_onset, 
-#                                  duration = mu_long_dur/mu_short_dur)
 
 env_post$fry_abund_predict <- total_fry.df$total_fry
 env_post$onset_impute <- spread_draws(fit, thermal_onset_merge[y]) |> 
@@ -779,7 +721,7 @@ p3 <- fry_percent_change %>%
   mutate(variable = factor(variable, levels = unique(variable)[c(4,5,1,2,3)])) |>   
   ggplot(aes(x = variable, y = pct_change))+
   geom_hline(yintercept = 0, lty = 2)+
-  stat_pointinterval(.width = CIs)+
+  stat_pointinterval(.width = CrIs)+
   ylab("Change in per spawner fry production (%)")+
   xlab("")+
   scale_x_discrete(labels = label_wrap(10))#+
@@ -801,7 +743,7 @@ for(i in 1:30){
 }
 
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = p_eff))+
-  stat_lineribbon(.width = c(CIs))+
+  stat_lineribbon(.width = c(CrIs))+
   labs(x = "Thermal barrier onset")+
   scale_y_continuous(name = expression("Per-capita spawner effectiveness ( " * italic(p)[y]^eff * ")"), limits = c(0, 1))+
   #scale_x_date(expand = c(0, 0))+
@@ -816,7 +758,6 @@ fig_spawn_fry_cap <- paste0("Panel A shows the estimated relationship between sp
 ,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
-Allowing flows during the incubation-period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry abundance by `r -round(median(fry_percent_change$FWMT))`% (95\% CI: `r round(quantile(fry_percent_change$FWMT,0.025))`\% to `r round(quantile(fry_percent_change$FWMT,0.975))`\%) with a `r round(mean(fry_percent_change$FWMT<0)*100)`% probability that the effect is negative.
 
 \noindent\textbf{Keywords:} salmon; Oncorhynchus; spawner; fry; temperature; flow; incubation; Osoyoos Lake; Okanagan River; Columbia River
 
@@ -1049,8 +990,8 @@ Missing sampled volume was imputed jointly within the full Bayesian model using 
 ### Spawner-to-fry recruitment submodel  
 We modelled expected fry abundance $\mu_y^{\text{sf}}$ in year $y$ as a Shepherd function [@shepherd1982] of spawner abundance $N_y^{\text{spawners}}$:
 
-$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}} \cdot N_y^{\text{spawners}}}{1 + (\beta_y^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\Theta^{\text{sf}}}},$$
-where $\alpha_y^{\text{sf}}$ is the density-independent production rate in year $y$, $\beta_y^{\text{sf}}$ is the rate of density dependence, and $\Theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\Theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\Theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta_y^{\text{sf}}$ near one, avoiding the need for very small parameter values.
+$$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}} \cdot N_y^{\text{spawners}}}{1 + (\beta_y^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\theta^{\text{sf}}}},$$
+where $\alpha_y^{\text{sf}}$ is the density-independent production rate in year $y$, $\beta_y^{\text{sf}}$ is the rate of density dependence, and $\theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\theta^{\text{sf}}\to\infty$. Thus, it is a generalized version, which does not assume any specific functional form for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta_y^{\text{sf}}$ near one, avoiding the need for very small parameter values.
 
 ### Density-independent productivity during incubation
 We allow the density-independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions experienced during incubation, modelling it as a log-linear function in order to ensure positivity:
@@ -1079,12 +1020,22 @@ To propagate uncertainty in spawner abundance, we model log spawner abundance $\
 
 $$\log N_y^{\text{spawners}} \sim \text{Normal}(\hat{\mu}_y^{\text{spawners}}, \hat{\sigma}_y^{\text{spawners}})$$
 
-where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @thompsoninreview. Full prior specifications are provided in ADD Table REF.
+where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are the mean and standard deviation of log spawner abundance from @thompsoninreview. Full prior specifications are provided in Table \ref{tab:priorstable}.
 
- 
-
+## Quantifying environmental impacts on spawner-to-fry production
+We estimated scenario-based contrasts in predicted fry production by varying each environmental covariate while holding all others at their mean value. Except when estimating its effect, the FWMT incubation flow rate range was assumed to be maintained. Predictions were generated at the median observed spawner abundance over the study period. For each contrast, fry production was estimated with the focal variable set to the `r low*100`% (low or short) and `r high*100`% (high or long) quantiles of its observed distribution. For the FWMT effect, we compared scenarios where incubation flows were maintained within the FWMT range (i.e., $\text{FWMT}_y = 0$) throughout the incubation period and where the flow exceeded this range at least once during incubation (i.e., $\text{FWMT}_y = 1$). For each posterior draw, we calculated the percent difference between scenarios. Percent change was calculated using the scenario with higher median predicted fry production as the reference state, such that all estimates are expressed as reductions in spawner-to-fry production.
 
 # Results
+We estimate that when the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production production declines by approximately
+`r -round(median(fry_percent_change$onset))`% compared with a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`)(95\% CrI: `r -round(quantile(fry_percent_change$onset,0.975))`\% to `r -round(quantile(fry_percent_change$onset,0.025))`\%). 
+
+The impact of long versus short thermal barrier duration, independent of onset date, is estimated to reduce fry production by `r -round(median(fry_percent_change$dur))`%, with a `r round(mean(fry_percent_change$dur<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$dur,0.975))`\% to `r -round(quantile(fry_percent_change$dur,0.025))`\%). 
+
+In years with low pre-spawn flushing, fry production is estimated to be `r -round(median(fry_percent_change$freshet))`% lower compared to what it would be in years with high pre-spawn flushing, with a `r round(mean(fry_percent_change$freshet<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$freshet,0.975))`\% to `r -round(quantile(fry_percent_change$freshet,0.025))`\%). 
+
+Allowing flows during the incubation period to exceed the target range from the Fish Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry production by `r -round(median(fry_percent_change$FWMT))`% (95\% CrI: `r -round(quantile(fry_percent_change$FWMT,0.975))`\% to `r -round(quantile(fry_percent_change$FWMT,0.025))`\%).
+
+In years with low incubation accumulated thermal units, fry production is estimated to be `r -round(median(fry_percent_change$ATU))`% lower compared to what it would be in years with high incubation accumulated thermal units, with a `r round(mean(fry_percent_change$ATU<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$ATU,0.975))`\% to `r -round(quantile(fry_percent_change$ATU,0.025))`\%). 
 
 ```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=8, fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
