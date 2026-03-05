@@ -78,6 +78,9 @@ header-includes:
       \setcounter{figure}{0}
       \renewcommand{\thefigure}{S\arabic{figure}}
     }
+  - |
+    \usepackage{tikz}
+    \usetikzlibrary{positioning,arrows.meta,calc}
 ---
 
 ```{r libraries, include = FALSE, warning=FALSE}
@@ -713,7 +716,7 @@ p1 <- FWMT_BH_summary.df |>
 
 p3 <- fry_percent_change %>%
   rename("low incubation ATUs" = "ATU",
-         "FWMT exceeded" = "FWMT",
+         "exceeded FWMT range" = "FWMT",
          "low pre-spawn flushing" = "freshet",
           "early thermal barrier" =  "onset",
          "short thermal barrier (resid.)" = "duration") |> 
@@ -722,7 +725,7 @@ p3 <- fry_percent_change %>%
   ggplot(aes(x = variable, y = pct_change))+
   geom_hline(yintercept = 0, lty = 2)+
   stat_pointinterval(.width = CrIs)+
-  ylab("Change in per spawner fry production (%)")+
+  ylab("Change in fry production (%)")+
   xlab("")+
   scale_x_discrete(labels = label_wrap(10))#+
   #scale_y_continuous(breaks = seq(-100, 25, by = 25))+
@@ -745,10 +748,13 @@ for(i in 1:30){
 p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020-01-01")), aes(x = date, y = p_eff))+
   stat_lineribbon(.width = c(CrIs))+
   labs(x = "Thermal barrier onset")+
-  scale_y_continuous(name = expression("Per-capita spawner effectiveness ( " * italic(p)[y]^eff * ")"), limits = c(0, 1))+
-  #scale_x_date(expand = c(0, 0))+
+  scale_y_continuous(
+    name = expression("Spawner effectiveness (" * italic(p)[y]^eff * ")"),
+    limits = c(0, 1)
+  )+
   coord_cartesian(expand = FALSE)+
-  scale_fill_brewer(palette = "Greys", guide = "none")
+  scale_fill_brewer(palette = "Greys", guide = "none")+
+  theme(axis.title.x = element_text(margin = margin(t = -15, unit = "pt")))
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
   plot_layout(height = c(1,0.8), axis_titles = "keep") + 
@@ -874,98 +880,91 @@ ggplot(env.df, aes(x = onset, y = duration))+
 ## Directed acyclic graph and overall model structure
 The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R version getRversion() [@rcoreteam2024] using cmdstanr [@gabry2024].
 
-```{r DAG, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, fig.pos='center',fig.cap = "Directed acyclic graph (DAG) showing model structure linking spawner abundance, environmental drivers, fry emergence phenology, and observed set-level fry catches. Node colours indicate: latent/process variables (purple), environmental drivers (blue), sampling/observation variables (grey), and the observed response (red). NOTE: this is a placeholder until I can produce a nicer looking DAG."}
+```{=latex}
+\begin{figure}
+\centering
+\resizebox{\linewidth}{!}{%
+% Okabe–Ito colorblind-safe palette
+\definecolor{OIorange}{HTML}{E69F00}
+\definecolor{OIsky}{HTML}{56B4E9}
+\definecolor{OIgreen}{HTML}{009E73}
+\definecolor{OIyellow}{HTML}{F0E442}
+\definecolor{OIblue}{HTML}{0072B2}
+\definecolor{OIverm}{HTML}{D55E00}
+\definecolor{OIpurp}{HTML}{CC79A7}
+\definecolor{OIblack}{HTML}{000000}
+\begin{tikzpicture}[
+font=\scriptsize,
+box/.style={draw, rounded corners, align=left, line width=0.8pt, text width=2.2cm, inner sep=1mm, execute at begin node=\raggedright},
+env/.style={box, draw=OIblue, fill=OIblue!8},
+proc/.style={box, draw=OIverm, fill=OIverm!8},
+samp/.style={box, draw=OIgreen, fill=OIgreen!8},
+obs/.style={box, draw=OIpurp, fill=OIpurp!8},
+arr/.style={-Stealth, thick}
+]
 
-dag <- dagitty('dag {
-bb="0,0,1,1"
-"Okanagan river temperature (migration period)" [pos="0.463,0.036"]
-"hour of peak emergence" [pos="0.622,0.669"]
-"density dependence" [pos="0.288,0.378"]
-"effective spawners" [pos="0.465,0.288"]
-"day of peak emergence" [pos="0.332,0.739"]
-"hour sampled" [pos="0.515,0.65"]
-"pre-spawn flushing" [pos="0.112,0.348"]
-"river flow during sampling" [pos="0.831,0.510"]
-"soak time" [pos="0.65,0.508"]
-"thermal barrier duration (residual)" [pos="0.537,0.15"]
-"thermal barrier onset" [pos="0.381,0.13"]
-"volume sampled" [pos="0.733,0.65"]
-FWMT_exceedance [pos="0.108,0.508"]
-emergence_sd [pos="0.300,0.882"]
-n_fry_day [pos="0.463,0.830"]
-n_fry_set [pos="0.590,0.851"]
-n_fry_total [pos="0.466,0.548"]
-n_spawners [pos="0.158,0.215"]
-"Okanagan river temperature (migration period)" -> "thermal barrier duration (residual)"
-"Okanagan river temperature (migration period)" -> "thermal barrier onset"
-"hour of peak emergence" -> n_fry_set
-"density dependence" -> n_fry_total
-"effective spawners" -> n_fry_total
-"day of peak emergence" -> n_fry_day
-"hour sampled" -> n_fry_set
-"incubation ATU" -> n_fry_total
-"pre-spawn flushing" -> "density dependence"
-"river flow during sampling" -> "volume sampled"
-"soak time" -> "volume sampled"
-"thermal barrier duration (residual)" -> "effective spawners"
-"thermal barrier onset" -> "effective spawners"
-"volume sampled" -> n_fry_set
-FWMT_exceedance -> n_fry_total
-emergence_sd -> n_fry_day
-n_fry_day -> n_fry_set
-n_fry_total -> n_fry_day
-n_spawners -> "density dependence"
-n_spawners -> "effective spawners"
+% ---- Environmental drivers ----
+\node[env] (temp)  at (10, -4.5)   {$T_y^{\mathrm{mig}}$\\Upmigration temperature};
+\node[env] (onset) at (10, -3)  {$\mathrm{onset}_y$\\Thermal barrier onset};
+\node[env] (dur)   at (10, -6)  {$\mathrm{dur}_y$\\Thermal barrier duration (resid.)};
+\node[env] (flush) at (0,-5)  {$\mathrm{flush}_y$\\Pre-spawn flushing};
+\node[env] (atu)   at (0,-6.15)  {$\mathrm{ATU}_y$\\Incubation ATU};
+\node[env] (fwmt)  at (0,-7.25)  {$\mathrm{FWMT}_y$\\Incubation FWMT range exceedance};
+\node[env] (spawn) at (0,-3)  {$N_y^{\mathrm{spawners}}$\\Spawner abundance};
+
+% ---- Latent / process ----
+\node[proc] (eff)  at (6.6,-5)  {$p_y^{\mathrm{eff}} \cdot N_y^{\mathrm{spawners}}$\\Effective spawners};
+\node[proc] (dd)   at (3.3,-5)  {$\beta_y^{\mathrm{sf}}$\\Density dependence};
+\node[proc] (ftot) at (6.6,-7.5)  {$\hat{N}^{\mathrm{fry}}_y$\\Total emerging fry};
+\node[proc] (fday) at (6.6,-10) {$\hat{N}^{\mathrm{fry}}_{y,d}$\\Daily emergence};
+\node[proc] (dpk)  at (3.3,-8.35) {$d_y^{\mu}$\\Day of peak emergence};
+\node[proc] (sd)   at (3.3,-9.5) {$d_y^{\sigma}$\\Seasonal emergence spread};
+\node[proc] (hpk)  at (3.3,-11) {$h^{\mu}$\\Hour of peak emergence};
+\node[proc] (hsd)  at (3.3,-12.15) {$h^{\sigma}$\\Daily emergence spread};
+
+% ---- Sampling ----
+\node[samp] (flow) at (10,-9.15) {$\mathrm{flow}_i$\\River flow during sampling};
+\node[samp] (soak) at (10,-11.5) {$\mathrm{soak}_i$\\Soak time};
+\node[samp] (vol)  at (10,-10.4) {$V_s$\\Volume sampled};
+\node[samp] (hs)   at (10,-12.5) {$h_i$\\Hour sampled};
+
+% ---- Observed ----
+\node[obs] (y) at (6.6,-12.5) {$N_i^{\mathrm{fry}_\mathrm{obs}}$\\Observed fry catch};
+
+% ---- Arrows ----
+\draw[arr] (temp) -- (onset);
+\draw[arr] (temp) -- (dur);
+
+\draw[arr] (onset) -- (eff);
+\draw[arr] (dur) -- (eff);
+
+\draw[arr] (spawn) -- (eff);
+\draw[arr] (spawn) -- (dd);
+\draw[arr] (flush) -- (dd);
+
+\draw[arr] (eff) -- (ftot);
+\draw[arr] (dd) -- (ftot);
+\draw[arr] (atu) -- (ftot);
+\draw[arr] (fwmt) -- (ftot);
+
+\draw[arr] (ftot) -- (fday);
+\draw[arr] (dpk) -- (fday);
+\draw[arr] (sd) -- (fday);
+
+\draw[arr] (fday) -- (y);
+\draw[arr] (hpk) -- (y);
+\draw[arr] (hsd) -- (y);
+\draw[arr] (hs) -- (y);
+\draw[arr] (vol) -- (y);
+
+\draw[arr] (flow) -- (vol);
+\draw[arr] (soak) -- (vol);
+
+\end{tikzpicture}%
 }
-
-')
-
-dag_df <- tidy_dagitty(dag) %>%
-  mutate(type = case_when(
-    # Observed response (data)
-    name %in% c("n_fry_set") ~ "observed response",
-    
-    # Latent states / process components
-    name %in% c("n_fry_total", "n_fry_day",
-                "effective spawners", "density dependence",
-                "day of peak emergence", "emergence_sd",
-                "hour of peak emergence") ~ "latent / process",
-    
-    # Environmental / biological drivers (observed covariates)
-    name %in% c("n_spawners",
-                "incubation ATU", "FWMT_exceedance",
-                "pre-spawn flushing",
-                "thermal barrier onset",
-                "thermal barrier duration (residual)",
-                "Okanagan river temperature (migration period)") ~ "environmental driver",
-    
-    # Observation / sampling effort variables
-    name %in% c("hour sampled",
-                "volume sampled", "soak time",
-                "river flow during sampling") ~ "sampling / observation",
-    
-    TRUE ~ "other"
-  ))
-
-my_colors <- c(
-  "observed response"      = "#d62728",
-  "latent / process"       = "#9467bd",
-  "environmental driver"   = "#1f77b4",
-  "sampling / observation" = "#7f7f7f", 
-  "other"                  = "black"
-)
-
-ggdag(dag_df, text = FALSE, node = FALSE) +
-  geom_dag_text(aes(color = type), show.legend = FALSE) +
-  geom_point(aes(x = 1.5, y = 0.5, color = type), size = 1, show.legend = TRUE) + # invisible points ONLY for legend
-  scale_color_manual(
-    values = my_colors, name = "") +
-  coord_cartesian(xlim = c(0, 1))+
-  scale_y_reverse()+
-  theme_dag()
-
+\caption{Directed acyclic graph (DAG) illustrating the assumed relationships among spawner abundance, environmental drivers, fry emergence phenology, and observed fry catches at the set level. Arrows indicate conditional dependencies among variables in the hierarchical model. Node colours indicate: environmental and population drivers (blue), latent ecological processes (orange), sampling/observation processes (green), and the observed response (pink).}
+\end{figure}
 ```
-
 
 ## Estimating a metric of yearly fry abundance
 The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year $\hat{N}_y^{\text{fry}}$. The index is relative because the proportion of all emerging fry that are sampled is unknown. This annual index of fry abundance is treated as a latent state representing the relative seasonal total of emerging fry. It is shared by both the emergence observation submodel and the spawner-to-fry recruitment submodel within a joint likelihood, as outlined in the subsequent sections. The emergence data inform $\hat{N}_y^{\text{fry}}$, while the recruitment submodel provides its expectation as a function of spawner abundance and environmental covariates.
@@ -973,20 +972,20 @@ The goal of these surveys is to estimate the peak and end dates of emergence. Ho
 ### Fry-emergence submodel
 To specify the latent emergence process, we assume that fry emerge over a range of days that is approximated by a normal distribution. Additionally, emergence is assumed to vary in intensity across the day, peaking in the evening, again approximating a normal distribution. This is intended as a phenomenological approximation of emergence patterns, rather than as a mechanistic model of individual emergence timing. The total number of fry, as well as the seasonal timing and spread of their emergence, vary across years such that:
 
-$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\ d_y^{\text{sd}}\ \sqrt{2\pi} h^{\text{sd}}} \cdot 
-\exp\!\left(-\frac{(d - d_y^{\text{peak}})^2}{2(d_y^{\text{sd}})^2} \right),$$
+$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\ d_y^{\sigma}\ \sqrt{2\pi} h^{\sigma}} \cdot 
+\exp\!\left(-\frac{(d - d_y^{\mu})^2}{2(d_y^{\sigma})^2} \right),$$
 
 
-where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$, evaluated at the peak hour $h^{\text{peak}}$. This equation ensures that the implied emergence integrates to $\hat{N}_y^{\text{fry}}$ across days and hours in the year. The parameters $d_y^{\text{peak}}$ and $d_y^{\text{sd}}$ represent the peak timing and spread of emergence across days in year $y$, modelled hierarchically across years (peak on the linear scale; spread on the log scale). The parameter $h^{\text{sd}}$ is the spread of emergence in a day, which we assume is constant across days and years. We used standardized (mean = 0, sd = 1) day $d$ and hour $h$ in the model. The within-day peak timing parameter $h^{\text{peak}}$ does not appear in this expression because $\hat{N}_{y,d}^{\text{fry}}$ represents the emergence intensity evaluated at that peak hour; the hourly distribution around that peak is incorporated in the observation model (outlined below).
+where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$, evaluated at the peak hour $h^{\mu}$. This equation ensures that the implied emergence integrates to $\hat{N}_y^{\text{fry}}$ across days and hours in the year. The parameters $d_y^{\mu}$ and $d_y^{\sigma}$ represent the peak timing and spread of emergence across days in year $y$, modelled hierarchically across years (peak on the linear scale; spread on the log scale). The parameter $h^{\sigma}$ is the spread of emergence in a day, which we assume is constant across days and years. We used standardized (mean = 0, sd = 1) day $d$ and hour $h$ in the model. The within-day peak timing parameter $h^{\mu}$ does not appear in this expression because $\hat{N}_{y,d}^{\text{fry}}$ represents the emergence intensity evaluated at that peak hour; the hourly distribution around that peak is incorporated in the observation model (outlined below).
 
 We linked the latent emergence intensity to the observed fry counts from the individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Thus, the expected fry count for set $i$ depends on the emergence intensity on day $d_i$ in year $y_i$, adjusting for volume sampled, and the standardized set hour $h_i$:
 
 \begin{align*}
 N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{\text{volume}} \cdot (\log(\text{volume}_i) - \log(100)) - \frac{(h_i - h^{\text{peak}})^2}{2 (h^{\text{sd}})^2} \right), \\
+\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{V} \cdot (\log(V_i) - \log(100)) - \frac{(h_i - h^{\mu})^2}{2 (h^{\sigma})^2} \right), \\
 \end{align*}
 
-where $\beta^{\text{volume}}$ is the rate at which fry abundance increases with sampled volume $\text{volume}_i$, expressed relative to 100 m$^3$. The parameter $h^{\text{peak}}$ is the hour of peak emergence in the day, and $h^{\text{sd}}$ is the spread of emergence across hours in a day. 
+where $\beta^{V}$ is the rate at which fry abundance increases with sampled volume $V_i$, expressed relative to 100 m$^3$. The parameter $h^{\mu}$ is the hour of peak emergence in the day, and $h^{\sigma}$ is the spread of emergence across hours in a day. 
 
 Missing sampled volume was imputed jointly within the full Bayesian model using a lognormal regression of sampled volume on soak time and daily flow (both log-transformed). The parameters were estimated based on the observed volumes and missing values were imputed based on these relationships. 
 
@@ -1041,11 +1040,11 @@ Allowing flows during the incubation period to exceed the target range from the 
 
 In years with low incubation accumulated thermal units, fry production is estimated to be `r -round(median(fry_percent_change$ATU))`% lower compared to what it would be in years with high incubation accumulated thermal units, with a `r round(mean(fry_percent_change$ATU<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$ATU,0.975))`\% to `r -round(quantile(fry_percent_change$ATU,0.025))`\%). 
 
-```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=8, fig.cap= fig_fry_emerge_cap}
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=7.5, fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
 ```
 
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=8, fig.cap=fig_spawn_fry_cap}
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.3, fig.height=8*0.66*1.3, fig.cap=fig_spawn_fry_cap}
 fig_spawn_fry
 ```
 
@@ -1112,25 +1111,25 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
 
   # --- Emergence observation model ---
-  "$\\beta^{\\text{volume}}$", "Effect of sampled volume on log expected catch",
+  "$\\beta^{V}$", "Effect of sampled volume on log expected catch",
   "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
 
-  "$h^{\\text{peak}}$", "Within-night peak hour",
+  "$h^{\\mu}$", "Within-night peak hour",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized hour",
 
-  "$h^{\\text{sd}}$", "Within-night spread (standardized hour scale)", 
+  "$h^{\\sigma}$", "Within-night spread (standardized hour scale)", 
   "$\\mathrm{Exponential}(1)$", "positive",
 
-  "$\\mu_{d}^{\\text{peak}}$", "Multiyear mean of peak emergence day",
+  "$\\mu_{d}^{\\mu}$", "Multiyear mean of peak emergence day",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized day",
 
-  "$\\sigma_{d}^{\\text{peak}}$", "Across-year SD of peak emergence day",
+  "$\\sigma_{d}^{\\mu}$", "Across-year SD of peak emergence day",
   "$\\mathrm{Exponential}(1)$", "linear",
 
-  "$\\mu_{d}^{\\text{sd}}$", "Multiyear mean of log day spread",
+  "$\\mu_{d}^{\\sigma}$", "Multiyear mean of log day spread",
   "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "log",
 
-  "$\\sigma_{d}^{\\text{sd}}$", "Across-year SD of day spread",
+  "$\\sigma_{d}^{\\sigma}$", "Across-year SD of day spread",
   "$\\mathrm{Exponential}(1)$", "positive",
 
   "$\\phi^{\\text{fry}}$", "Negative binomial overdispersion (NB2)",
