@@ -1260,3 +1260,25 @@ kable(priors_tbl, booktabs = TRUE, escape = FALSE,
 ```{r map, echo = FALSE, message = FALSE, fig.cap="Map of study system", height = 6.5}
 knitr::include_graphics("../figures/Okanagan_to_Osoyoo_Lakes.png")
 ```
+
+
+```{r frysets, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=6, fig.cap = ""}
+spread_draws(fit, volume_merge[set]) |> 
+  group_by(set) |> 
+  summarise(volume = median(volume_merge)) |> 
+  mutate(fry = dat_list$fry_obs, year = dat_list$year, day = dat_list$day, hour = dat_list$hour) |> 
+  mutate(yday = day + min(emergence_select$yday) - 1) |> 
+  mutate(brood_year = year + init_year - 1) |> 
+  mutate(hour = hour * sd(emergence_select$time_set_numeric) + mean(emergence_select$time_set_numeric)) |> 
+  ggplot(aes(x = yday, y = fry/volume, color = hour))+
+  geom_point()+
+  facet_wrap(~brood_year)+
+  scale_y_log10()+
+  scale_x_continuous(
+    name = "",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0),
+    breaks = seq(91, 121, length = 2)
+  )+
+  scale_colour_viridis_c("Hrs.\nafter\n8PM")+
+  ylab("Fry per volume (m3)")
+```
