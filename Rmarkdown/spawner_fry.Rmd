@@ -132,19 +132,97 @@ emergence$time_set_numeric <- with(emergence, {
   (adjusted_hours + minutes) - 20
 })
 
+ggplot(emergence, aes(x = sample_year, y = time_set_numeric))+
+  geom_jitter(width = 0.25, height = 0)
+
 emergence <- emergence %>% mutate(volume_m3 = ifelse(volume_m3<0, NA, volume_m3),
                                   mean_nightly_discharge_cms = ifelse(mean_nightly_discharge_cms>100, NA, mean_nightly_discharge_cms)) %>% 
   mutate(total_catch = as.integer(total_catch)) |> 
-  filter(sample_year>2002) #2002 was the first year of sampling and methods were not yet worked out
+  filter(sample_year>2003) #|>  #2002 was the first year of sampling and methods were not yet worked out, 2003 only sampled early and late in the evening, likely missing peak emergence
+  #filter(sample_year!=2018)
+  
+exclude_gear <- c(
+  "lost a side of the fyke net frame",
+  "mended hole found",
+  "hole",
+  "net had collapsed",
+  "net got caught on itself",
+  "net got caught on bank",
+  "net twisted",
+  "cod end caught on weight",
+  "cod end twisted",
+  "twisted",
+  "stuck in neck",
+  "switched to old net",
+  "branch caught in net",
+  "branch caught",
+  "caught on rope",
+  "caught on bank",
+  "caught on weight",
+  "tree caught on rope",
+  "not submerged",
+  "net was not set right",
+  "net not set properly",
+  "might not have set properly",
+  "set without weights",
+  "walk net out to set",
+  "cod-end may have been twisted",
+  "cod end might have twisted")
+
+exclude_measurement <- c(
+  "velocity conversion",
+  "error in meter readings",
+  "meter readings were nonsense",
+  "end meter reading is questionable",
+  "props not working",
+  "volume is average of other",
+  "not submerged",
+  "substituted",
+  "average of other volumes",
+  "meter not set properly",
+  "problem with the meter",
+  "velocity meter had no water",
+  "velocity meter low on water",
+  "debris caught in velocity metre",
+  "low meter reading",
+  "forgot to put velocity meter",
+  "velocity meter broke",
+  "reading might not be correct")
+
+
+make_regex <- function(phrases) {
+  parts <- phrases |>
+    tolower() |>
+    stringr::str_replace_all("\\s+", "\\\\s+") |>
+    stringr::str_replace_all("\\(", "\\\\(") |>
+    stringr::str_replace_all("\\)", "\\\\)")
+  paste0("(", paste0(parts, collapse = "|"), ")")
+}
+
+gear_rx  <- make_regex(exclude_gear)
+meas_rx  <- make_regex(exclude_measurement)
+
+emergence_tagged <- emergence %>%
+  mutate(
+    comment_norm = if_else(is.na(comments), NA_character_, str_squish(tolower(comments))),
+    gear_issue   = if_else(is.na(comment_norm), FALSE, str_detect(comment_norm, gear_rx)),
+    meas_issue   = if_else(is.na(comment_norm), FALSE, str_detect(comment_norm, meas_rx))
+  )
+
+emergence_no_gear <- emergence_tagged %>% filter(!gear_issue)
+
+emergence_no_gear <- emergence_no_gear %>%
+  mutate(volume_m3 = if_else(meas_issue, NA_real_, volume_m3))
 
 
 
-emergence_select <- emergence %>% select(date, brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric, volume_m3) %>% 
+emergence_select <- emergence_no_gear %>% select(date, brood_year, sample_year, total_catch, soak_time_min, yday, time_set_numeric, volume_m3, comments) %>% 
   mutate(date = as.Date(date)) %>% 
-  filter(time_set_numeric >= 0, time_set_numeric<=5) %>% 
+  filter(time_set_numeric >= 1, time_set_numeric<=5) %>% 
   filter(!is.na(total_catch)) |> 
-  filter(soak_time_min >=5, soak_time_min<=20)
-
+  filter(soak_time_min >=5, soak_time_min<=20, volume_m3 > 10 | is.na(volume_m3)) |> 
+  filter(!(brood_year == 2010 & yday == 107 & time_set_numeric < 3)) |>  #note says "bouy not hooked up right! in sets 1-3"
+  filter(!(brood_year == 2014 & yday == 118 & time_set_numeric == 2)) #no note, but almost surely an error as it has only one fish and all other sets on evening have hundreds
 ```
 
 
@@ -395,11 +473,14 @@ env.df <- env.df %>%
 ```{r stan, include = FALSE}
 dayV <- seq(min(emergence_select$yday)-3, max(emergence_select$yday)+5)
 
+emergence_select <- emergence_select |> 
+  filter(sample_year != 2018) #2018 surveys seem to have used very different timing (many sets early in the day) and all finished before 10PM
 
-dat_list <- list(Y = length(unique(emergence_select$sample_year)),
+
+dat_list <- list(Y = length(unique(env.df$year)),
                  N = nrow(emergence_select),
                  D = length(dayV),
-                 year = as.numeric(factor(emergence_select$sample_year)),
+                 year = as.numeric(emergence_select$sample_year - min(emergence_select$sample_year)+1),
                  fry_obs = emergence_select$total_catch,
                  N_missing_volume = sum(is.na(emergence_select$volume_m3)),
                  volume_missidx = which(is.na(emergence_select$volume_m3)),
@@ -456,7 +537,7 @@ fit <- run_or_load_model(
   threads_per_chain = 1,
   iter_sampling = 1000,
   iter_warmup = 1000,
-  seed = 7, 
+  seed = 6, 
   adapt_delta = 0.99
 )
 
@@ -798,7 +879,7 @@ Spawner abundance was estimated using a previously published Bayesian model fit 
 ### Fry emergence
 The ONA has conducted fry emergence surveys in the Okanagan River each spring (March–May) since `r min(emergence_select$sample_year)`; trial sampling in 2002 was excluded because methods were not standardized. Sampling occurs approximately weekly early in the emergence period and increases to every 3–4 days during peak emergence, with reduced frequency thereafter.
 
-Emerging fry are sampled at Vertical Drop Structure 13 (Figure \ref{fig:map}) using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 20:00 and 01:00 with soak times between 5 and 20 minutes.  
+Emerging fry are sampled at Vertical Drop Structure 13 (Figure \ref{fig:map}) using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 21:00 and 01:00 with soak times between 5 and 20 minutes, and with sampled volume of at least 10 m$^3$.  
 
 ## Environmental covariates
 ### Upstream migration thermal barrier
@@ -1032,7 +1113,7 @@ We estimated scenario-based contrasts in predicted fry production by varying eac
 We estimate that when the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production production declines by approximately
 `r -round(median(fry_percent_change$onset))`% compared with a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`)(95\% CrI: `r -round(quantile(fry_percent_change$onset,0.975))`\% to `r -round(quantile(fry_percent_change$onset,0.025))`\%). 
 
-The impact of long versus short thermal barrier duration, independent of onset date, is estimated to reduce fry production by `r -round(median(fry_percent_change$dur))`%, with a `r round(mean(fry_percent_change$dur<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$dur,0.975))`\% to `r -round(quantile(fry_percent_change$dur,0.025))`\%). 
+The impact of long versus short thermal barrier duration, independent of onset date, is estimated to reduce fry production by `r -round(median(fry_percent_change$dur))`% (95\% CrI: `r -round(quantile(fry_percent_change$dur,0.975))`\% to `r -round(quantile(fry_percent_change$dur,0.025))`\%). 
 
 In years with low pre-spawn flushing, fry production is estimated to be `r -round(median(fry_percent_change$freshet))`% lower compared to what it would be in years with high pre-spawn flushing, with a `r round(mean(fry_percent_change$freshet<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$freshet,0.975))`\% to `r -round(quantile(fry_percent_change$freshet,0.025))`\%). 
 
@@ -1040,11 +1121,11 @@ Allowing flows during the incubation period to exceed the target range from the 
 
 In years with low incubation accumulated thermal units, fry production is estimated to be `r -round(median(fry_percent_change$ATU))`% lower compared to what it would be in years with high incubation accumulated thermal units, with a `r round(mean(fry_percent_change$ATU<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$ATU,0.975))`\% to `r -round(quantile(fry_percent_change$ATU,0.025))`\%). 
 
-```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=7.5, fig.cap= fig_fry_emerge_cap}
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.1, fig.height=7.5*1.1, fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
 ```
 
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.3, fig.height=8*0.66*1.3, fig.cap=fig_spawn_fry_cap}
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.35, fig.height=8*0.66*1.35, fig.cap=fig_spawn_fry_cap}
 fig_spawn_fry
 ```
 
