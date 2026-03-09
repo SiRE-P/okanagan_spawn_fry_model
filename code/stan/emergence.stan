@@ -25,8 +25,8 @@ data {
   array[N] int year; //year
   vector[N] hour; //hour set started - standardized 
   array[N] int day; //observation day index
-  vector[Y] new_moon_date; //date of the new moon, standardized
-  vector[N] dusk; //dusk on day of observation
+  //vector[Y] new_moon_date; //date of the new moon, standardized
+  //vector[N] dusk; //dusk on day of observation
   array[Y] int exceeded_FWMT; //index for whether or not FWMT range was exceeded 0 for no, 1 for yes
   
   vector[Y] spawner_ln_est;

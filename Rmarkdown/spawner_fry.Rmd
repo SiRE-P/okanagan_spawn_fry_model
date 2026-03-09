@@ -93,9 +93,11 @@ library(kableExtra)
 
 library(tidyverse)
 library(janitor)
+library(readxl)
 library(lunar)
 library(suncalc)
 library(rnoaa)
+library(tidyhydat)
 library(patchwork)
 library(ggrepel)
 library(scales)
@@ -118,11 +120,36 @@ stand <- function(x){
 }
 
 CrIs <- c(0.66, 0.95)
-year_breaks <- seq(2002, 2030, by = 4)
+year_breaks <- seq(2000, 2030, by = 4)
 ```
 
 ```{r load_emergence, include = FALSE, warning=FALSE}
 emergence <- read.csv("../../../data/okanagan_sockeye_data/data_clean/fry_emergence.csv")
+
+emergence_2024 <- read_excel("../data/Emerg data 2024 updated 2024.06.05.xlsx", sheet = "Data") |> 
+  clean_names()
+
+names(emergence_2024)
+
+emergence_2024 <- emergence_2024 |> 
+  filter(!is.na(total_sk_fry)) |> 
+  select(date, set, time_set, soak_time_min = soak_time_minutes, total_catch = total_sk_fry, volume_m3, comments, meter_reading_start, meter_reading_end) |> 
+  mutate(sample_year = year(date), brood_year = year(date)-1) |> 
+  mutate(time_set = format(time_set, "%H:%M:%S"))
+
+emergence_2025 <- read_excel("../data/Emerg data 2025 - recd May21_AO - wkg.xlsx", sheet = "Data") |> 
+  clean_names()
+
+names(emergence_2025)
+
+emergence_2025 <- emergence_2025 |> 
+  filter(!is.na(total_sk_fry)) |> 
+  select(date, set, time_set, soak_time_min = soak_time_minutes, total_catch = total_sk_fry, volume_m3, comments, meter_reading_start, meter_reading_end) |> 
+  mutate(sample_year = year(date), brood_year = year(date)-1) |> 
+  mutate(time_set = format(time_set, "%H:%M:%S"))
+
+emergence <- bind_rows(emergence |> mutate(date = as.Date(date), time_set = time_set), emergence_2024, emergence_2025)
+
 emergence$yday <- yday(emergence$date)
 
 emergence$time_set_numeric <- with(emergence, {
@@ -314,7 +341,9 @@ for(i in 1:length(unique(emergence$sample_year))){
     filter(ATU > ATU_emergence_thresh) |> 
     first()
   
+  if(!is.na(ATU_thresh_date$date)){
   start_date <- ATU_thresh_date$date
+  }
   dates <- seq(start_date, start_date+29, by = "day")
   
   new_moon_date = dates[which.min(lunar.illumination(dates))]
@@ -322,7 +351,7 @@ for(i in 1:length(unique(emergence$sample_year))){
   new_moons <- bind_rows(new_moons, data.frame(year = year_select, ATU_yday = yday(start_date), new_moon_date = new_moon_date, new_moon_yday = yday(new_moon_date)))
 }
 
-env.df <- new_moons %>% 
+env.df <- left_join(data.frame(year = unique(emergence_select$sample_year)),new_moons) %>% 
   left_join(ATU_day100 %>% select(year, ATU))
 
 ggplot(env.df, aes(x = new_moon_yday, y = ATU_yday))+
@@ -333,19 +362,33 @@ summary(lm(ATU ~ new_moon_yday, data = env.df))
 ```
 
 ```{r flow, include=FALSE}
-flow <- read.csv("../../../data/okanagan_sockeye_data/data_clean/ok_river_mean_daily_flows.csv") %>% 
+#download here - https://wateroffice.ec.gc.ca/report/data_availability_e.html?type=historical&station=08NM085&parameter_type=Flow+and+Level
+flows <- read.csv("../data/flow_20260309T1903.csv", skip = 1) |> 
+  clean_names() |> 
+  filter(param == 1)
+
+ggplot(flows, aes(x = date, y = value))+
+  geom_line()
+
+flow <- flows |>  
   mutate(date = as.Date(date), yday = yday(date), year = year(date)) %>% 
+  filter(year >= min(emergence_select$brood_year)-1) |> 
   mutate(month_day = format(date, "%m-%d")) %>% 
   group_by(month_day) %>% 
-  mutate(life_stage = first(life_stage)) %>% 
-  mutate(life_stage2 = ifelse(month_day >= format(incubation_start_full, "%m-%d") | month_day <= format(incubation_end_full, "%m-%d"), "incubation", life_stage)) %>% 
-  mutate(life_stage = factor(life_stage, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
+  mutate(
+    life_stage2 = case_when(
+      month_day >= format(incubation_start_full, "%m-%d") | month_day <= format(incubation_end_full, "%m-%d") ~ "incubation",
+      yday > 100 & yday < 122 ~ "fry migration",
+      yday > 121 & yday < 214 ~ "rearing",
+      yday > 212 & yday < 260 ~ "rearing",
+      yday > 158 & yday < 289 ~ "spawning"
+    )
+  ) |> 
   mutate(life_stage2 = factor(life_stage2, levels = c("incubation", "fry migration", "rearing", "adult migration", "spawn"), ordered = TRUE)) %>% 
   ungroup()
 
 flow %>% 
   filter(life_stage2 %in% c("incubation", "fry migration")) %>% 
-  filter(brood_year >= min(emergence$brood_year)) %>% 
   ggplot(aes(x = date, y = value))+
   geom_hline(yintercept = c(5, 28.3), lty = 2)+
   geom_point(size = 0.1)+
@@ -359,7 +402,9 @@ scour_des <- flow %>%
   filter(life_stage2 %in% c("incubation", "fry migration")) %>% 
   group_by(date) %>% 
   mutate(scour = max(c(value - 28.5, 0)), desiccation = max(c(5 - value, 0))) %>% 
-  ungroup()
+  ungroup() |> 
+  mutate(year = year(date)) |> 
+  mutate(brood_year = ifelse(yday < 200, year - 1, year))
 
 scour_des_sum <- scour_des %>% 
   group_by(brood_year, life_stage2) %>% 
@@ -379,6 +424,7 @@ scour_des_sum <- scour_des %>%
 
 freshet_mat <- flow %>% 
   filter(year %in% unique(emergence_select$brood_year)) %>% 
+  mutate(month = month(date)) |> 
   filter(month < c(10)) %>% 
   select(year, yday, value) %>% 
   group_by(yday) %>% 
@@ -400,11 +446,11 @@ emergence_select <- left_join(emergence_select |> mutate(date = as.Date(date)), 
 ```{r spawners, include = FALSE}
 spawners <- read.csv("../outputs/spawners_est.csv") %>% 
   select(-X) %>% 
-  mutate(fry_year = year + 1)
+  rename(brood_year = year) |> 
+  mutate(year = brood_year + 1)
 
 env.df <- env.df %>% 
-  left_join(spawners %>% select(spawners_ln_est = spawners_ln, spawner_ln_sd = sd, fry_year), by = c("year" = "fry_year")) %>% 
-  mutate(brood_year = year-1)
+  left_join(spawners %>% select(spawners_ln_est = spawners_ln, spawner_ln_sd = sd, brood_year, year))
 ```
 
 ```{r thermal_barrier, include = FALSE}
@@ -474,9 +520,11 @@ env.df <- env.df %>%
 dayV <- seq(min(emergence_select$yday)-3, max(emergence_select$yday)+5)
 
 emergence_select <- emergence_select |> 
-  filter(sample_year != 2018) #2018 surveys seem to have used very different timing (many sets early in the day) and all finished before 10PM
+  filter(sample_year != 2018)  #2018 surveys seem to have used very different timing (many sets early in the day) and all finished before 10PM
 
-
+enf.df<- env.df |> 
+  filter(brood_year>= min(emergence_select$brood_year), brood_year<=max(emergence_select$brood_year))
+  
 dat_list <- list(Y = length(unique(env.df$year)),
                  N = nrow(emergence_select),
                  D = length(dayV),
@@ -489,7 +537,7 @@ dat_list <- list(Y = length(unique(env.df$year)),
                  soak_time = emergence_select$soak_time_min,
                  day = emergence_select$yday - min(emergence_select$yday) + 1,
                  hour = stand(emergence_select$time_set_numeric),
-                 new_moon_date = stand(env.df$new_moon_yday),
+                 #new_moon_date = stand(env.df$new_moon_yday),
                  
                  dusk = stand(emergence_select$dusk), 
                  exceeded_FWMT = as.numeric(env.df$non_range_days>0),
@@ -597,7 +645,7 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   geom_line(size = 1)+
   xlab("")+
   ylab("# of emerging fry (relative)")+
-  scale_color_viridis_b(breaks = seq(2002, 2025, by = 4), option = "D", limits = c(2002, 2022), name = "Brood year")+
+  scale_color_viridis_b(breaks = seq(2000, 2024, by = 4), option = "D", limits = c(2000, 2024), name = "Brood year")+
   scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
   theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))+
   scale_x_continuous(
@@ -808,9 +856,8 @@ p3 <- fry_percent_change %>%
   stat_pointinterval(.width = CrIs)+
   ylab("Change in fry production (%)")+
   xlab("")+
-  scale_x_discrete(labels = label_wrap(10))#+
-  #scale_y_continuous(breaks = seq(-100, 25, by = 25))+
-  #coord_cartesian(ylim =  c(-78, 20), expand = c(0, 0))
+  scale_x_discrete(labels = label_wrap(10))+
+  scale_y_continuous(breaks = seq(-100, 200, by = 20))
 
 
 end_day_onset <- 248
@@ -838,7 +885,7 @@ p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020
   theme(axis.title.x = element_text(margin = margin(t = -15, unit = "pt")))
 
 fig_spawn_fry <- p1 / (p0 + p3) + 
-  plot_layout(height = c(1,0.8), axis_titles = "keep") + 
+  plot_layout(height = c(1.5, 1), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
 fig_spawn_fry_cap <- paste0("Estimates from the spawner-fry-recruitment submodel. (A) Estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). Points (and their error bars) show annual posterior estimates of fry abundance coloured by thermal barrier onset date; brood-year labels are coloured by FWMT range. The lines show posterior median spawner–fry curves under two thermal barrier onset scenarios (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") and two FWMT scenarios (solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside) for the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). (B) Posterior relationship between thermal barrier onset date and per-capita spawner effectiveness. (C) Estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
@@ -947,10 +994,14 @@ ggplot(env.df, aes(x = onset, y = duration))+
   scale_y_continuous(breaks = c(0, 1), labels = c("No", "Yes"), limits = c(0, 1)) +
   labs(x = "Brood year", y = "FWMT range maintained")+
   scale_x_continuous(breaks = year_breaks)+
-
-  ggplot(env.df, aes(x = brood_year, y = ATU))+
-  geom_line()+
-  labs(x = "Brood year", y = "Incubation ATUs")+
+  
+  spread_draws(fit, ATU_merge[y]) |> 
+  mutate(year = y + init_year - 1) |> 
+  mutate(ATU = ATU_merge * sd(env.df$ATU, na.rm = TRUE) + mean(env.df$ATU, na.rm = TRUE)) |> 
+  ggplot(aes(x = year, y = ATU))+
+  stat_pointinterval(pch = NA)+
+  stat_summary(fun = median, geom = "line")+
+    labs(x = "Brood year", y = "Incubation ATUs")+
   scale_x_continuous(breaks = year_breaks)+
   
   plot_annotation(tag_levels = "A")+
@@ -1125,7 +1176,7 @@ In years with low incubation accumulated thermal units, fry production is estima
 fig_fry_emerge
 ```
 
-```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.35, fig.height=8*0.66*1.35, fig.cap=fig_spawn_fry_cap}
+```{r fryspawnfig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.35, fig.height=10*0.66*1.35, fig.cap=fig_spawn_fry_cap}
 fig_spawn_fry
 ```
 
