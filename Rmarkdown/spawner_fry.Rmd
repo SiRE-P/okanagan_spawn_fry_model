@@ -536,7 +536,7 @@ dat_list <- list(Y = length(unique(env.df$year)),
                  sample_flow = emergence_select$daily_flow,
                  soak_time = emergence_select$soak_time_min,
                  day = emergence_select$yday - min(emergence_select$yday) + 1,
-                 hour = stand(emergence_select$time_set_numeric),
+                 hour = stand(log(emergence_select$time_set_numeric)),
                  #new_moon_date = stand(env.df$new_moon_yday),
                  
                  dusk = stand(emergence_select$dusk), 
@@ -575,7 +575,7 @@ dat_list <- list(Y = length(unique(env.df$year)),
 
 init_year <- min(emergence_select$sample_year) - 1
 
-stan_file <- "../code/stan/emergence.stan"
+stan_file <- "../code/stan/emergence_skew_h.stan"
 fit <- run_or_load_model(
   model_name = "emerge_m",
   stan_path = stan_file,
@@ -654,7 +654,7 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   xlab("")+
   ylab("# of emerging fry (relative)")+
   scale_color_viridis_b(breaks = seq(2000, 2024, by = 4), option = "D", limits = c(2000, 2024), name = "Brood year")+
-  scale_y_continuous(limits = c(0, 600), expand = c(0, 0))+
+  scale_y_continuous(expand = c(0, 20))+
   theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))+
   scale_x_continuous(
     name = "",
@@ -1110,22 +1110,22 @@ arr/.style={-Stealth, thick}
 The goal of these surveys is to estimate the peak and end dates of emergence. However, they can also provide a relative index of total fry abundance in each year $\hat{N}_y^{\text{fry}}$. The index is relative because the proportion of all emerging fry that are sampled is unknown. This annual index of fry abundance is treated as a latent state representing the relative seasonal total of emerging fry. It is shared by both the emergence observation submodel and the spawner-to-fry recruitment submodel within a joint likelihood, as outlined in the subsequent sections. The emergence data inform $\hat{N}_y^{\text{fry}}$, while the recruitment submodel provides its expectation for this index as a function of spawner abundance and environmental covariates.
 
 ### Fry-emergence submodel
-To specify the latent emergence process, we assume that fry emerge over a range of days that is approximated by a normal distribution. Additionally, emergence is assumed to vary in intensity across the day, peaking in the evening, again approximating a normal distribution. This is intended as a descriptive approximation of population‑level emergence patterns, rather than a mechanistic model of individual emergence timing. The total number of fry, as well as the seasonal timing and spread of their emergence, vary across years such that:
+To specify the latent emergence process, we modelled fry emergence as a smooth, unimodal skew-normal function of seasonal timing expressed on the day-of-year scale, such that the total index of fry abundance within a given year ($\hat{N}_y^{\text{fry}}$) is distributed across the emergence season $\mathcal{D}$. We define $\mathcal{D}$ was the sequence of days between `r min(dayV)` and `r max(dayV)`, which corresponds to `r format(make_date(2026, 1, 1) + days(min(dayV) - 1), "%B %e")`--`r format(make_date(2026, 1, 1) + days(max(dayV) - 1), "%B %e")` in non-leap years. The total number of fry, as well as the seasonal penology, vary across years such that:
 
-$$\hat{N}_{y,d}^{\text{fry}} = \frac{\hat{N}_y^{\text{fry}}}{\sqrt{2\pi}\ d_y^{\sigma}\ \sqrt{2\pi} h^{\sigma}} \cdot 
-\exp\!\left(-\frac{(d - d_y^{\mu})^2}{2(d_y^{\sigma})^2} \right),$$
+$$\hat{N}_{y,d}^{\text{fry}} = \hat{N}_y^{\text{fry}}\frac{\exp(-\frac{1}{2}z_{y,d}^2)\Phi(\kappa_y z_{y,d})}{\sum_{d' \in \mathcal{D}}\exp(-\frac{1}{2}z_{y,d'}^2)\Phi(\kappa_y z_{y,d'})}, \hspace{1cm} z_{y,d} = \frac{d - d_y^\mu}{d_y^\sigma},$$
 
 
-where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$, evaluated at the peak hour $h^{\mu}$. This equation ensures that the emergence distribution integrates to the annual index $\hat{N}_y^{\text{fry}}$ across days and hours in a given year. The parameters $d_y^{\mu}$ and $d_y^{\sigma}$ represent the peak timing and spread of emergence across days in year $y$, modelled hierarchically across years (peak on the linear scale; spread on the log scale). The parameter $h^{\sigma}$ is the spread of emergence in a day, which we assume is constant across days and years. We used standardized (mean = 0, sd = 1) day $d$ and hour $h$ in the model. The within-day peak timing parameter $h^{\mu}$ does not appear in this expression because $\hat{N}_{y,d}^{\text{fry}}$ represents the emergence intensity evaluated at that peak hour; the hourly distribution around that peak is incorporated in the observation model (outlined below).
+where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$. The parameters $d_y^{\mu}$, $d_y^{\sigma}$, and $\kappa_y$ represent the peak timing, the spread of emergence across days, and the skew of the distribution in year $y$, modelled hierarchically across years (peak and skew on the linear scale; spread on the log scale). The function $\Phi(.)$ denotes the standard normal cumulative distribution function. We used standardized (mean = 0, sd = 1) day $d$ in the model. 
 
-We linked the latent emergence intensity to the observed fry counts from individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Thus, the expected fry count for set $i$ depends on the emergence intensity on day $d_i$ in year $y_i$, adjusting for volume sampled, and on the standardized set hour $h_i$:
+We evaluated alternative formulations of the seasonal emergence phenology, including (i) a model with time-invariant skew $\kappa$, and (ii) a symmetric Gaussian emergence function. The skew-normal model with interannual variation in skew presented above had substantially improved out of sample predictive performance, as quantified using leave-one-out cross validation ($\Delta$ELPD > 49). 
 
-\begin{align*}
-N_i^{\text{fry}_{\text{obs}}} &\sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}) \\
-\mu^{\text{fry}}_i &= \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{V} \cdot (\log(V_i) - \log(100)) - \frac{(h_i - h^{\mu})^2}{2 (h^{\sigma})^2} \right), \\
-\end{align*}
+We linked the latent emergence intensity to the observed fry counts from individual sets using a negative binomial likelihood with an overdispersion parameter $\phi^{\text{fry}}$. Thus, the observed fry count in set $i$ is modelled as:
 
-where $\beta^{V}$ is the rate at which fry abundance increases with sampled volume $V_i$, expressed relative to 100 m$^3$. The parameter $h^{\mu}$ is the hour of peak emergence in the day, and $h^{\sigma}$ is the spread of emergence across hours in a day. 
+$$N_i^{\text{fry}_{\text{obs}}} \sim \text{NegativeBinomial}(\mu^{\text{fry}}_i, \phi^{\text{fry}}),$$
+with an expected value
+
+$$\mu^{\text{fry}}_i = \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{V} \cdot (\log(V_i) - \log(100)) - \frac{(h_i - h^{\mu})^2}{2 (h^{\sigma})^2} \right).$$
+Here, $\beta^{V}$ is the rate at which fry abundance increases with sampled volume $V_i$, expressed relative to 100 m$^3$. Within-day variation in emergence is modelled at the observation level using a unimodal Gaussian kernel on standardized log-transformed hours elapsed since 10:00 ($h_i$); samples times range from 21:00 to 01:00. Log-transforming elapsed sampling time captures the empircally observed log-normal pattern of fry abundance over the course of the evening (Figure \ref{fig:frysetshour}) and substantially improves out of sample predictive performance, as quantified using leave-one-out cross validation ($\Delta$ELPD = 30.3). The parameter $h^{\mu}$ is the hour of peak emergence in the day, and $h^{\sigma}$ is the spread of emergence across hours in a day. 
 
 Missing sampled volume was imputed jointly within the full Bayesian model using a lognormal regression of sampled volume on soak time and daily flow (both log-transformed). The parameters were estimated based on the observed volumes, and missing values were imputed based on these relationships. 
 
@@ -1172,6 +1172,11 @@ We estimated scenario-based contrasts in predicted fry production by varying eac
 We ran four parallel Markov chain Monte Carlo (MCMC) chains for 2000 iterations each, discarding the first 1000 as warm up. We assessed convergence using the rank-normalized version of the Gelman-Rubin diagnostic [@vehtari2021], and all parameters showed satisfactory convergence ($\hat{R} \le$ `r round(max(rhat_df$rhat), 3)`).
 
 # Results
+## Fry emergence timing
+
+
+## Fry abundance index
+
 ## Environment impacts on spawner-to-fry production
 We estimate that when the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production declines by approximately
 `r -round(median(fry_percent_change$onset))`% compared with a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`)(95\% CrI: `r -round(quantile(fry_percent_change$onset,0.975))`\% to `r -round(quantile(fry_percent_change$onset,0.025))`\%). 
@@ -1344,4 +1349,22 @@ spread_draws(fit, volume_merge[set]) |>
   )+
   scale_colour_viridis_c("Hrs.\nafter\n8PM")+
   ylab("Fry per volume (m3)")
+```
+
+```{r frysetshour, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=6, fig.cap = "Observed fry per volume of water sampled over hours elapsed since 20:00. Sets are restricted to those between day-of-year 96 and 120, for visual clarity."}
+spread_draws(fit, volume_merge[set]) |> 
+  group_by(set) |> 
+  summarise(volume = median(volume_merge)) |> 
+  mutate(fry = dat_list$fry_obs, year = dat_list$year, day = dat_list$day, hour = dat_list$hour) |> 
+  mutate(yday = day + min(emergence_select$yday) - 1) |> 
+  mutate(brood_year = year + init_year - 1) |> 
+  mutate(hour = hour * sd(emergence_select$time_set_numeric) + mean(emergence_select$time_set_numeric)) |> 
+  filter(yday>96, yday<120) |> 
+ggplot(aes(x = hour, y = fry/volume, color = yday))+
+  geom_point()+
+  facet_wrap(~brood_year)+
+  scale_y_log10()+
+  scale_color_viridis_c("day-of-year")+
+    ylab("Fry per volume (m3)")+
+  xlab("Hours after 8PM")
 ```
