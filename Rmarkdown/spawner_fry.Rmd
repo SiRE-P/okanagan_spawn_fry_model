@@ -148,7 +148,18 @@ emergence_2025 <- emergence_2025 |>
   mutate(sample_year = year(date), brood_year = year(date)-1) |> 
   mutate(time_set = format(time_set, "%H:%M:%S"))
 
-emergence <- bind_rows(emergence |> mutate(date = as.Date(date), time_set = time_set), emergence_2024, emergence_2025)
+emergence_2026 <- read_excel("../data/Emerg data 2026.xlsx", sheet = "Data") |> 
+  clean_names()
+
+names(emergence_2026)
+
+emergence_2026 <- emergence_2026 |> 
+  filter(!is.na(total_sk_fry)) |> 
+  select(date, set, time_set, soak_time_min = soak_time_minutes, total_catch = total_sk_fry, volume_m3, comments, meter_reading_start, meter_reading_end) |> 
+  mutate(sample_year = year(date), brood_year = year(date)-1) |> 
+  mutate(time_set = format(time_set, "%H:%M:%S"))
+
+emergence <- bind_rows(emergence |> mutate(date = as.Date(date), time_set = time_set), emergence_2024, emergence_2025)#, emergence_2026)
 
 emergence$yday <- yday(emergence$date)
 
@@ -199,6 +210,7 @@ exclude_gear <- c(
 exclude_measurement <- c(
   "velocity conversion",
   "error in meter readings",
+  "meter reading incorect",
   "meter readings were nonsense",
   "end meter reading is questionable",
   "props not working",
@@ -337,18 +349,30 @@ for(i in 1:length(unique(emergence$sample_year))){
   year_select <- unique(emergence$sample_year)[i]
   ATU_year <- ATU.df |> filter(year_start == (year_select - 1))
   
-  ATU_thresh_date <- ATU_year|> 
+  ATU_thresh_date <- ATU_year |> 
     filter(ATU > ATU_emergence_thresh) |> 
-    first()
+    slice(1)   # safer than first()
   
-  if(!is.na(ATU_thresh_date$date)){
-  start_date <- ATU_thresh_date$date
+  start_date <- NA  # <-- important
+  
+  if(nrow(ATU_thresh_date) > 0 && !is.na(ATU_thresh_date$date)){
+    start_date <- ATU_thresh_date$date
   }
-  dates <- seq(start_date, start_date+29, by = "day")
   
-  new_moon_date = dates[which.min(lunar.illumination(dates))]
-  
-  new_moons <- bind_rows(new_moons, data.frame(year = year_select, ATU_yday = yday(start_date), new_moon_date = new_moon_date, new_moon_yday = yday(new_moon_date)))
+  if(!is.na(start_date)){
+    dates <- seq(start_date, start_date + 29, by = "day")
+    new_moon_date <- dates[which.min(lunar.illumination(dates))]
+    
+    new_moons <- bind_rows(
+      new_moons,
+      data.frame(
+        year = year_select,
+        ATU_yday = yday(start_date),
+        new_moon_date = new_moon_date,
+        new_moon_yday = yday(new_moon_date)
+      )
+    )
+  }
 }
 
 env.df <- left_join(data.frame(year = unique(emergence_select$sample_year)),new_moons) %>% 
@@ -586,13 +610,16 @@ fit <- run_or_load_model(
   iter_sampling = 1000,
   iter_warmup = 1000,
   seed = 6, 
-  adapt_delta = 0.99
+  adapt_delta = 0.95
 )
 
 rhat_df <- fit$draws() |>
   summarise_draws(rhat = rhat) |> 
   filter(!is.na(rhat)) |> 
   arrange(desc(rhat))
+
+color_scheme_set("viridis")
+mcmc_trace(x = fit$draws(), pars = rhat_df$variable[1:16])
 
 # worst_Rhat <- fit$summary() %>%
 #   as.data.frame() %>%
@@ -606,8 +633,6 @@ rhat_df <- fit$draws() |>
 #   geom_hline(yintercept = 1.01, lty = 2) +
 #   geom_vline(xintercept = 400, lty = 2)+
 #   ggtitle("thin = 1")
-
-
 
 post <- as_draws_df(fit$draws())
 ```
@@ -742,7 +767,7 @@ p5 <- spread_draws(fit, day_peak[year]) %>%
 fig_fry_emerge <- p1 / p2 / p3 / p4 +
   plot_annotation(tag_levels = "A")
 
-fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance from the fry-emergence submodel. (A) The estimated relative abundance at emerging fry across dates where each line represents a single year. (B) Estimated peak fry-emergence day by year. (C) Estimated relative fry abundance index by year. Points and error bars in panels B and C show the posterior medians with 66% and 95% credible intervals.")
+fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance from the fry-emergence submodel. (A) The estimated relative abundance at emerging fry across dates where each line represents a single year. (B) Estimated peak fry-emergence day by year. (C) Estimated width of the emergence window in days by year. (D) Estimated relative fry abundance index by year. Points and error bars in panels B through D show the posterior medians with 66% and 95% credible intervals.")
 
 ```
 
@@ -963,12 +988,12 @@ Here we present a process‑based Bayesian model that estimates how flow velocit
 ## Study system
 ### Salmon enumeration
 ### Spawners
-Spawner abundance was estimated using a previously published Bayesian model fit to spawner enumeration surveys conducted by the Okanagan Nation Alliance (ONA) in the Okanagan River Index section between Osoyoos and Vaseux lakes [Figure \ref{fig:map}\; @thompsoninreview]. That model accounts for observation error and repeated counts of individuals on the spawning grounds producing annual posterior distributions of total spawner abundance. For the present analysis, we used the posterior mean and standard deviation of log spawner abundance as inputs to the spawner-to-fry recruitment model (described below), thereby propagating uncertainty from the spawner estimation process.
+Spawner abundance was estimated using a previously published Bayesian model fit to spawner enumeration surveys conducted by the Okanagan Nation Alliance (ONA) in the Okanagan River Index section between Osoyoos and Vaseux lakes [Fig. \ref{fig:map}\; @thompsoninreview]. That model accounts for observation error and repeated counts of individuals on the spawning grounds producing annual posterior distributions of total spawner abundance. For the present analysis, we used the posterior mean and standard deviation of log spawner abundance as inputs to the spawner-to-fry recruitment model (described below), thereby propagating uncertainty from the spawner estimation process.
 
 ### Fry emergence
 The ONA has conducted fry emergence surveys in the Okanagan River each spring (March–May) since `r min(emergence_select$sample_year)`; trial sampling in 2002 was excluded because methods were not standardized. Sampling occurs approximately weekly early in the emergence period and increases to every 3–4 days during peak emergence, with reduced frequency thereafter.
 
-Emerging fry are sampled at Vertical Drop Structure 13 (Figure \ref{fig:map}) using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 21:00 and 01:00 with soak times between 5 and 20 minutes, and with sampled volume of at least 10 m$^3$.  
+Emerging fry are sampled at Vertical Drop Structure 13 (Fig. \ref{fig:map}) using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 21:00 and 01:00 with soak times between 5 and 20 minutes, and with sampled volume of at least 10 m$^3$.  
 
 ## Environmental covariates
 ### Upstream migration thermal barrier
@@ -979,10 +1004,10 @@ The onset date of the thermal barrier is the first day of this period and the du
 Because water temperatures at Malott are not available prior to `r min(thermal_barrier$year)`, we treated thermal-barrier onset and residual duration as partially missing covariates and estimated them within the Bayesian spawner-to-fry recruitment model. For years with missing Malott temperature data, standardized onset date (mean = 0, SD = 1) was modelled as a linear function of mean June air temperature from the nearby NOAA station USW00094197. The regression coefficients and residual variance were estimated from years with observed onset, and onset dates in missing years were inferred under this fitted relationship and error distribution. Residual duration (scaled by its standard deviation) was also treated as partially missing and was estimated within the Bayesian model by assuming a skew‑normal distribution across years; missing values were inferred from this distribution.
 
 ### Incubation period flow and temperature
-We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on the date that spawners have typically arrived on the spawning grounds [@thompsoninreview] and just prior to when emerging fry have been most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Figure \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
+We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on the date that spawners have typically arrived on the spawning grounds [@thompsoninreview] and just prior to when emerging fry have been most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Fig. \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
 
 ### Pre-spawn flushing flows
-We characterized pre‑spawn flushing conditions using daily discharge from the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January through September preceding each spawning season (Figure X). To summarize the extent to which flows were capable of mobilizing fine sediments within the spawning gravel, we constructed an annual flushing index:
+We characterized pre‑spawn flushing conditions using daily discharge from the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January through September preceding each spawning season (Fig. X). To summarize the extent to which flows were capable of mobilizing fine sediments within the spawning gravel, we constructed an annual flushing index:
 
 $$\text{flush}_y = \sum_{d \in D_y}\text{logit}^{-1}(k_{\text{flush}} \cdot (Q_{y,d} - Q^*))$$
 
@@ -1051,7 +1076,7 @@ ggplot(env.df, aes(x = onset, y = duration))+
 ```
 
 ## Directed acyclic graph and overall model structure
-The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Figure \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R version `r getRversion()` [@rcoreteam2024] using cmdstanr [@gabry2024].
+The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Fig. \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R version `r getRversion()` [@rcoreteam2024] using cmdstanr [@gabry2024].
 
 ```{=latex}
 \begin{figure}
@@ -1081,8 +1106,8 @@ arr/.style={-Stealth, thick}
 \node[env] (onset) at (10, -3)  {$\mathrm{onset}_y$\\Thermal barrier onset};
 \node[env] (dur)   at (10, -6)  {$\mathrm{dur}_y$\\Thermal barrier duration (resid.)};
 \node[env] (flush) at (0,-5)  {$\mathrm{flush}_y$\\Pre-spawn flushing};
-\node[env] (atu)   at (0,-6.15)  {$\mathrm{ATU}_y$\\Incubation ATU};
-\node[env] (fwmt)  at (0,-7.25)  {$\mathrm{FWMT}_y$\\Incubation FWMT range exceedance};
+\node[env] (atu)   at (0,-7.15)  {$\mathrm{ATU}_y$\\Incubation ATU};
+\node[env] (fwmt)  at (0,-6.15)  {$\mathrm{FWMT}_y$\\Incubation FWMT range exceedance};
 \node[env] (spawn) at (0,-3)  {$N_y^{\mathrm{spawners}}$\\Spawner abundance};
 
 % ---- Latent / process ----
@@ -1119,6 +1144,8 @@ arr/.style={-Stealth, thick}
 \draw[arr] (dd) -- (ftot);
 \draw[arr] (atu) -- (ftot);
 \draw[arr] (fwmt) -- (ftot);
+
+\draw[arr] (atu) -- (dpk);
 
 \draw[arr] (ftot) -- (fday);
 \draw[arr] (dpk) -- (fday);
@@ -1159,7 +1186,7 @@ $$N_i^{\text{fry}_{\text{obs}}} \sim \text{NegativeBinomial}(\mu^{\text{fry}}_i,
 with an expected value
 
 $$\mu^{\text{fry}}_i = \exp\left( \log \hat{N}_{y_i, d_i}^{\text{fry}} + \beta^{V} \cdot (\log(V_i) - \log(100)) - \frac{(h_i - h^{\mu})^2}{2 (h^{\sigma})^2} \right).$$
-Here, $\beta^{V}$ is the rate at which fry abundance increases with sampled volume $V_i$, expressed relative to 100 m$^3$. Within-day variation in emergence is modelled at the observation level using a unimodal Gaussian kernel on standardized log-transformed hours elapsed since 10:00 ($h_i$); samples times range from 21:00 to 01:00. Log-transforming elapsed sampling time captures the empircally observed log-normal pattern of fry abundance over the course of the evening (Figure \ref{fig:frysetshour}) and substantially improves out of sample predictive performance, as quantified using leave-one-out cross validation ($\Delta$ELPD = 30.3). The parameter $h^{\mu}$ is the hour of peak emergence in the day, and $h^{\sigma}$ is the spread of emergence across hours in a day. 
+Here, $\beta^{V}$ is the rate at which fry abundance increases with sampled volume $V_i$, expressed relative to 100 m$^3$. Within-day variation in emergence is modelled at the observation level using a unimodal Gaussian kernel on standardized log-transformed hours elapsed since 10:00 ($h_i$); samples times range from 21:00 to 01:00. Log-transforming elapsed sampling time captures the empircally observed log-normal pattern of fry abundance over the course of the evening (Fig. \ref{fig:frysetshour}) and substantially improves out of sample predictive performance, as quantified using leave-one-out cross validation ($\Delta$ELPD = 30.3). The parameter $h^{\mu}$ is the hour of peak emergence in the day, and $h^{\sigma}$ is the spread of emergence across hours in a day. 
 
 Missing sampled volume was imputed jointly within the full Bayesian model using a lognormal regression of sampled volume on soak time and daily flow (both log-transformed). The parameters were estimated based on the observed volumes, and missing values were imputed based on these relationships. 
 
@@ -1203,7 +1230,7 @@ where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are
 We estimated scenario-based contrasts in predicted fry production by varying each environmental covariate while holding all others at their mean value. Except when estimating its effect, the FWMT incubation flow rate range was assumed to be maintained. Predictions were generated at the median observed spawner abundance over the study period. For each contrast, fry production was estimated with the focal variable set to the `r low*100`% (low or short) and `r high*100`% (high or long) quantiles of its observed distribution. For the FWMT effect, we compared scenarios where incubation flows were maintained within the FWMT range (i.e., $\text{FWMT}_y = 0$) throughout the incubation period and where the flow exceeded this range at least once during incubation (i.e., $\text{FWMT}_y = 1$). For each posterior draw, we calculated the percent difference between scenarios. Percent change was calculated using the scenario with higher median predicted fry production as the reference state, such that all estimates are expressed as reductions in spawner-to-fry production.
 
 ## MCMC Chains
-We ran four parallel Markov chain Monte Carlo (MCMC) chains for 2000 iterations each, discarding the first 1000 as warm up. We assessed convergence using the rank-normalized version of the Gelman-Rubin diagnostic [@vehtari2021], and all parameters showed satisfactory convergence ($\hat{R} \le$ `r round(max(rhat_df$rhat), 3)`).
+We ran four parallel Markov chain Monte Carlo (MCMC) chains for 2000 iterations each, discarding the first 1000 as warm up. We assessed convergence using the rank-normalized version of the Gelman-Rubin diagnostic [@vehtari2021], and all parameters showed good convergence ($\hat{R} \le$ `r round(max(rhat_df$rhat), 3)`), with `r round(mean(rhat_df$rhat < 1.01) * 100)`\% of $\hat{R}$ values below 1.01.
 
 # Results
 ```{r emergecalc,  include = FALSE, warning=FALSE}
@@ -1215,26 +1242,43 @@ emerge_timing_summary <- spread_draws(fit, day_peak[year], day_sd[year], day_ske
   summarise(day_peak = median(day_peak), day_sd = median(day_sd), day_skew = median(day_skew)) |> 
   mutate(day_peak_string = format(make_date(2026, 1, 1) + day_peak - 1, "%B %e"))
 
+ws <- as_draws_df(fit$draws("emerge_phenology_L_corr"))
 
+extract_corr <- function(row) {
+  L <- matrix(0, 3, 3)
+  L[lower.tri(L, diag = TRUE)] <- as.numeric(row)
+  C <- L %*% t(L)
+  c(C[1,2], C[1,3], C[2,3])
+}
+
+corr_mat <- t(apply(ws, 1, extract_corr))
+
+colnames(corr_mat) <- c("peak_sd", "peak_skew", "sd_skew")
+
+summary_corr <- function(x) {
+  c(
+    median = median(x),
+    lower = unname(quantile(x, 0.025)),
+    upper = unname(quantile(x, 0.975))
+  )
+}
 ```
-## Fry emergence timing
-Peak emergence timing ($d_y^{\mu}$) ranged from `r emerge_timing_summary$day_peak_string[which(emerge_timing_summary$day_peak== min(emerge_timing_summary$day_peak))]` (brood year `r emerge_timing_summary$brood_year[which(emerge_timing_summary$day_peak== min(emerge_timing_summary$day_peak))]`) to `r emerge_timing_summary$day_peak_string[which(emerge_timing_summary$day_peak== max(emerge_timing_summary$day_peak))]` (brood year `r emerge_timing_summary$brood_year[which(emerge_timing_summary$day_peak== max(emerge_timing_summary$day_peak))]`). The width of the emergence window (i.e., number of days over which 95% of emergence occurred) varied from as short as `r min(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == min(emergence_window_summary$days95))]` and as long as `r max(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == max(emergence_window_summary$days95))]`.
+## Fry emergence
+Fry emergence abundance and timing varied among brood years (Fig. \ref{fig:fryemergefig}). The fry abundance index ranged from `r round(fry_abund_summary$fry_ind[which(fry_abund_summary$fry_ind == min(fry_abund_summary$fry_ind))])` in brood year `r round(fry_abund_summary$brood_year[which(fry_abund_summary$fry_ind == min(fry_abund_summary$fry_ind))])` to `r format(round(fry_abund_summary$fry_ind[which(fry_abund_summary$fry_ind == max(fry_abund_summary$fry_ind))]), scientific = FALSE, big.mark = "\u2009")` in brood year `r round(fry_abund_summary$brood_year[which(fry_abund_summary$fry_ind == max(fry_abund_summary$fry_ind))])` (Fig. \ref{fig:fryemergefig}B). 
 
-## Fry abundance index
-The fry abundance index ranged from `r round(fry_abund_summary$fry_ind[which(fry_abund_summary$fry_ind == min(fry_abund_summary$fry_ind))])` in brood year `r round(fry_abund_summary$brood_year[which(fry_abund_summary$fry_ind == min(fry_abund_summary$fry_ind))])` to `r round(fry_abund_summary$fry_ind[which(fry_abund_summary$fry_ind == max(fry_abund_summary$fry_ind))])` in brood year `r round(fry_abund_summary$brood_year[which(fry_abund_summary$fry_ind == max(fry_abund_summary$fry_ind))])`.
+Peak emergence timing ($d_y^{\mu}$) ranged from `r emerge_timing_summary$day_peak_string[which(emerge_timing_summary$day_peak== min(emerge_timing_summary$day_peak))]` in brood year `r emerge_timing_summary$brood_year[which(emerge_timing_summary$day_peak== min(emerge_timing_summary$day_peak))]` to `r emerge_timing_summary$day_peak_string[which(emerge_timing_summary$day_peak== max(emerge_timing_summary$day_peak))]` in brood year `r emerge_timing_summary$brood_year[which(emerge_timing_summary$day_peak== max(emerge_timing_summary$day_peak))]` (Fig. \ref{fig:fryemergefig}C). Peak emergence timing ($d_y^{\mu}$) occurred earlier in years with higher accumulated thermal units during the incubation period (Fig. \ref{fig:timingATU}), with posterior support entirely for a negative effect. 
+
+The width of the emergence window (i.e., number of days over which 95% of emergence occurred) varied from as short as `r min(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == min(emergence_window_summary$days95))]` to as long as `r max(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == max(emergence_window_summary$days95))]` (Fig. \ref{fig:fryemergefig}D). The parameters describing emergence timing were correlated. In years with later peak timing ($d_y^{\mu}$), emergence windows tended to be broader (correlation = `r round(summary_corr(corr_mat[, "peak_sd"])["median"], 2)`, 95% CrI: `r round(summary_corr(corr_mat[, "peak_sd"])["lower"], 2)` to `r round(summary_corr(corr_mat[, "peak_sd"])["upper"], 2)`) while skew tended to decrease with later peak timing (correlation = `r round(summary_corr(corr_mat[, "peak_skew"])["median"], 2)`, 95% CrI: `r round(summary_corr(corr_mat[, "peak_skew"])["lower"], 2)` to `r round(summary_corr(corr_mat[, "peak_skew"])["upper"], 2)`; Fig. \ref{fig:fryemergefig}A).
+
+
 
 
 ## Environment impacts on spawner-to-fry production
-We estimate that when the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production declines by approximately
-`r -round(median(fry_percent_change$onset))`% compared with a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`)(95\% CrI: `r -round(quantile(fry_percent_change$onset,0.975))`\% to `r -round(quantile(fry_percent_change$onset,0.025))`\%). 
+When the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production changes by approximately `r round(median(fry_percent_change$onset))`\% relative to a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`) (95\% CrI: `r round(quantile(fry_percent_change$onset, 0.025))`\% to `r round(quantile(fry_percent_change$onset, 0.975))`\%), with a `r round(mean(fry_percent_change$onset < 0) * 100)`\% probability of a negative effect. Long versus short thermal barrier duration, independent of onset date, was estimated to change fry production by `r round(median(fry_percent_change$dur))`\% (95\% CrI: `r round(quantile(fry_percent_change$dur, 0.025))`\% to `r round(quantile(fry_percent_change$dur, 0.975))`\%), with a `r round(mean(fry_percent_change$dur < 0) * 100)`\% probability of a negative effect. 
 
-The impact of long versus short thermal barrier duration, independent of onset date, is estimated to reduce fry production by `r -round(median(fry_percent_change$dur))`% (95\% CrI: `r -round(quantile(fry_percent_change$dur,0.975))`\% to `r -round(quantile(fry_percent_change$dur,0.025))`\%). 
+Fry production in years with low pre-spawn flushing was estimated to differ by `r round(median(fry_percent_change$freshet))`% relative to years with high flushing (95\% CrI: `r round(quantile(fry_percent_change$freshet,0.025))`\% to `r round(quantile(fry_percent_change$freshet, 0.975))`\%), with a `r round(mean(fry_percent_change$freshet<0) * 100)`% probability of a negative effect. Allowing flows during the incubation period to exceed the target range from the Fish/Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ was estimated to change fry production by `r round(median(fry_percent_change$FWMT))`\% (95\% CrI: `r round(quantile(fry_percent_change$FWMT, 0.025))`\% to `r round(quantile(fry_percent_change$FWMT, 0.975))`\%), with a `r round(mean(fry_percent_change$FWMT < 0) * 100)`\% probability of a negative effect. 
 
-In years with low pre-spawn flushing, fry production is estimated to be `r -round(median(fry_percent_change$freshet))`% lower compared to what it would be in years with high pre-spawn flushing, with a `r round(mean(fry_percent_change$freshet<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$freshet,0.975))`\% to `r -round(quantile(fry_percent_change$freshet,0.025))`\%). 
-
-Allowing flows during the incubation period to exceed the target range from the Fish/Water Management Tools $(5\text{ – }28.5~\mathrm{m}^3/\mathrm{s})$ is estimated to decrease fry production by `r -round(median(fry_percent_change$FWMT))`% (95\% CrI: `r -round(quantile(fry_percent_change$FWMT,0.975))`\% to `r -round(quantile(fry_percent_change$FWMT,0.025))`\%).
-
-In years with low incubation accumulated thermal units, fry production is estimated to be `r -round(median(fry_percent_change$ATU))`% lower compared to what it would be in years with high incubation accumulated thermal units, with a `r round(mean(fry_percent_change$ATU<0) * 100)`% probability that the effect is negative (95\% CrI: `r -round(quantile(fry_percent_change$ATU,0.975))`\% to `r -round(quantile(fry_percent_change$ATU,0.025))`\%). 
+In years with low incubation accumulated thermal units, fry production was estimated to differ by `r round(median(fry_percent_change$ATU))`\% relative to years with high incubation accumulated thermal units (95\% CrI: `r round(quantile(fry_percent_change$ATU, 0.025))`\% to `r round(quantile(fry_percent_change$ATU, 0.975))`\%), with a `r round(mean(fry_percent_change$ATU < 0) * 100)`\% probability of a negative effect.
 
 ```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.1, fig.height=8.4*1.1,  fig.align = "center", fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
@@ -1414,4 +1458,24 @@ ggplot(aes(x = hour, y = fry/volume, color = yday))+
   scale_color_viridis_c("day-of-year")+
     ylab("Fry per volume (m3)")+
   xlab("Hours after 8PM")
+```
+
+```{r timingATU, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6, fig.height=4, fig.cap = "Date of peak emergence timing vs. accumulated thermal units (ATUs) during the incubation period. "}
+spread_draws(fit, day_peak[year]) %>% 
+  mutate(year = init_year + year) %>%
+  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
+  left_join(env_post |> select(-day_peak)) %>% 
+  ggplot(aes(x = ATU, y = day_peak))+
+  # stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CrIs))+
+  geom_abline(slope = 1, intercept = 0, lty = 2)+
+  stat_pointinterval(.width = CrIs, aes(group = year))+
+  scale_fill_brewer(palette = "Greys", guide = "none")+
+  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
+  scale_y_continuous(
+    name = "Estimated peak emergence date",
+    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
+  ) +
+  scale_x_continuous(
+    name = "ATUs during incubation period"
+  )
 ```
