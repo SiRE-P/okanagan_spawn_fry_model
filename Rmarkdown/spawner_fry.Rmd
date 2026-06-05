@@ -592,8 +592,8 @@ dat_list <- list(Y = length(unique(env.df$year)),
 
                  sigma_sf_prior = 1,
                  beta_sf_prior = 0,
-                 alpha_sf_prior = -3,
-                 beta_sf_sigma_prior = 0.5,
+                 alpha_sf_prior = -1, #-3
+                 beta_sf_sigma_prior = 1, #0.5,
                  alpha_sf_sigma_prior = 1
 )
 
@@ -607,8 +607,8 @@ fit <- run_or_load_model(
   cache_dir = "../model_fits",
   chains = 4, 
   threads_per_chain = 1,
-  iter_sampling = 1000,
-  iter_warmup = 1000,
+  iter_sampling = 200,
+  iter_warmup = 200,
   seed = 6, 
   adapt_delta = 0.95
 )
@@ -951,12 +951,12 @@ p0 <- ggplot(thermal_onset.df |> mutate(date = as.Date(onset - 1, origin = "2020
   scale_fill_brewer(palette = "Greys", guide = "none")+
   theme(axis.title.x = element_text(margin = margin(t = -15, unit = "pt")))
 
-fig_spawn_fry <- p1 / (p0 + p3) + 
+fig_spawn_fry <- p1 / (p3 + p0) + 
   plot_layout(height = c(1.5, 1), axis_titles = "keep") + 
   plot_annotation(tag_levels = "A")
 
-fig_spawn_fry_cap <- paste0("Estimates from the spawner-fry-recruitment submodel. (A) Estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). Points (and their error bars) show annual posterior estimates of fry abundance coloured by thermal barrier onset date; brood-year labels are coloured by FWMT range. The lines show posterior median spawner–fry curves under two thermal barrier onset scenarios (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") and two FWMT scenarios (solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside) for the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). (B) Posterior relationship between thermal barrier onset date and per-capita spawner effectiveness. (C) Estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
-,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and C are based on the ", low, " and ", high," quantiles of the observed data. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
+fig_spawn_fry_cap <- paste0("Estimates from the spawner-fry-recruitment submodel. (A) Estimated relationship between spawner abundance (log axis) and emerging fry abundance (relative index). Points and their error bars show annual posterior estimates of fry abundance coloured by thermal barrier onset date; brood-year labels are coloured by FWMT range. The lines show posterior median spawner–fry curves under two thermal barrier onset scenarios (early: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))],"; late: ", thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") and two FWMT scenarios (solid = within FWMT range (5–28.5 m\u00B3/s), dotted = outside) for the incubation period (", format(incubation_start_full, "%B ") %>%  paste0(as.integer(format(incubation_start_full, "%d"))),"–", format(incubation_end_full, "%B ") %>%  paste0(as.integer(format(incubation_end_full, "%d"))),"). (B) Estimated percent change in fry production due to early (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, low))]
+,") vs. late (",thermal_barrier$onset_md[which(thermal_barrier$onset == quantile(thermal_barrier$onset, high))],") thermal barrier onset, long vs. short residual duration, low vs. high pre-spawn flushing, FWMT exceeded vs. maintained, and low (", round(quantile(env.df$ATU, low, na.rm = TRUE)), "°C·d) vs. high (",round(quantile(env.df$ATU, high, na.rm = TRUE)),"°C·d) ATUs during the incubation period. Contrasts for continuous variables in panels A and B are based on the ", low, " and ", high," quantiles of the observed data. (C) Posterior relationship between thermal barrier onset date and per-capita spawner effectiveness. Points and lines are posterior medians; shaded areas and error bars show 66% and 95% credible intervals.")
 ```
 # Abstract
 
@@ -1195,7 +1195,7 @@ Missing sampled volume was imputed jointly within the full Bayesian model using 
 We modelled expected fry abundance $\mu_y^{\text{sf}}$ in year $y$ as a Shepherd function [@shepherd1982] of spawner abundance $N_y^{\text{spawners}}$:
 
 $$\mu_y^{\text{sf}} = \frac{\alpha_y^{\text{sf}} \cdot p_y^{\text{eff}} \cdot N_y^{\text{spawners}}}{1 + (\beta_y^{\text{sf}} \cdot N_y^{\text{spawners}}/10^5)^{\theta^{\text{sf}}}},$$
-where $\alpha_y^{\text{sf}}$ is the density-independent production rate in year $y$, $\beta_y^{\text{sf}}$ is the rate of density dependence, and $\theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\theta^{\text{sf}}\to\infty$. Thus, it is a generalized version that does not assume a specific shapefor density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta_y^{\text{sf}}$ near one, avoiding the need for very small parameter values.
+where $\alpha_y^{\text{sf}}$ is the density-independent production rate in year $y$, $\beta_y^{\text{sf}}$ is the rate of density dependence, and $\theta^{\text{sf}}$ governs the shape of density dependence. $p_y^{\text{eff}}$ is a proportional scaling factor that reduces the effective reproductive contribution of each spawner, based on thermal conditions experienced during upstream migration (see below). This spawner-to-fry recruitment function reduces to the Beverton-Holt [@beverton1957] form when $\theta^{\text{sf}}=1$ and approaches a Ricker [@ricker1954] form when $\theta^{\text{sf}}\to\infty$. Thus, it is a generalized version that does not assume a specific shape for density dependence. We divide $N_y^{\text{spawners}}$ by $10^5$ in the denominator to keep $\beta_y^{\text{sf}}$ near one, avoiding the need for very small parameter values.
 
 ### Density-independent productivity during incubation
 We allow the density-independent production rate $\alpha_y^{\text{sf}}$ to vary from year-to-year based on environmental conditions experienced during incubation, modelling it as a log-linear function in order to ensure positivity:
@@ -1230,7 +1230,7 @@ where $\hat{\mu}_y^{\text{spawners}}$ and $\hat{\sigma}_y^{\text{spawners}}$ are
 We estimated scenario-based contrasts in predicted fry production by varying each environmental covariate while holding all others at their mean value. Except when estimating its effect, the FWMT incubation flow rate range was assumed to be maintained. Predictions were generated at the median observed spawner abundance over the study period. For each contrast, fry production was estimated with the focal variable set to the `r low*100`% (low or short) and `r high*100`% (high or long) quantiles of its observed distribution. For the FWMT effect, we compared scenarios where incubation flows were maintained within the FWMT range (i.e., $\text{FWMT}_y = 0$) throughout the incubation period and where the flow exceeded this range at least once during incubation (i.e., $\text{FWMT}_y = 1$). For each posterior draw, we calculated the percent difference between scenarios. Percent change was calculated using the scenario with higher median predicted fry production as the reference state, such that all estimates are expressed as reductions in spawner-to-fry production.
 
 ## MCMC Chains
-We ran four parallel Markov chain Monte Carlo (MCMC) chains for 2000 iterations each, discarding the first 1000 as warm up. We assessed convergence using the rank-normalized version of the Gelman-Rubin diagnostic [@vehtari2021], and all parameters showed good convergence ($\hat{R} \le$ `r round(max(rhat_df$rhat), 3)`), with `r round(mean(rhat_df$rhat < 1.01) * 100)`\% of $\hat{R}$ values below 1.01.
+We ran four parallel Markov chain Monte Carlo (MCMC) chains for 2000 iterations each, discarding the first 1000 as warm up. We assessed convergence using the rank-normalized version of the Gelman-Rubin diagnostic [@vehtari2021], and all parameters showed good convergence ($\hat{R} \le$ `r round(max(rhat_df$rhat), 3)`), with `r round(mean(rhat_df$rhat < 1.01) * 100, 1)`\% of $\hat{R}$ values below 1.01.
 
 # Results
 ```{r emergecalc,  include = FALSE, warning=FALSE}
@@ -1271,10 +1271,10 @@ Peak emergence timing ($d_y^{\mu}$) ranged from `r emerge_timing_summary$day_pea
 The width of the emergence window (i.e., number of days over which 95% of emergence occurred) varied from as short as `r min(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == min(emergence_window_summary$days95))]` to as long as `r max(emergence_window_summary$days95)` days in brood year `r emergence_window_summary$brood_year[which(emergence_window_summary$days95 == max(emergence_window_summary$days95))]` (Fig. \ref{fig:fryemergefig}D). The parameters describing emergence timing were correlated. In years with later peak timing ($d_y^{\mu}$), emergence windows tended to be broader (correlation = `r round(summary_corr(corr_mat[, "peak_sd"])["median"], 2)`, 95% CrI: `r round(summary_corr(corr_mat[, "peak_sd"])["lower"], 2)` to `r round(summary_corr(corr_mat[, "peak_sd"])["upper"], 2)`) while skew tended to decrease with later peak timing (correlation = `r round(summary_corr(corr_mat[, "peak_skew"])["median"], 2)`, 95% CrI: `r round(summary_corr(corr_mat[, "peak_skew"])["lower"], 2)` to `r round(summary_corr(corr_mat[, "peak_skew"])["upper"], 2)`; Fig. \ref{fig:fryemergefig}A).
 
 
-
-
 ## Environment impacts on spawner-to-fry production
-When the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production changes by approximately `r round(median(fry_percent_change$onset))`\% relative to a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`) (95\% CrI: `r round(quantile(fry_percent_change$onset, 0.025))`\% to `r round(quantile(fry_percent_change$onset, 0.975))`\%), with a `r round(mean(fry_percent_change$onset < 0) * 100)`\% probability of a negative effect. Long versus short thermal barrier duration, independent of onset date, was estimated to change fry production by `r round(median(fry_percent_change$dur))`\% (95\% CrI: `r round(quantile(fry_percent_change$dur, 0.025))`\% to `r round(quantile(fry_percent_change$dur, 0.975))`\%), with a `r round(mean(fry_percent_change$dur < 0) * 100)`\% probability of a negative effect. 
+Relative fry abundance increased with spawner abundance in a density-dependent manner (Fig. \ref{fig:fryspawnfig}). The shape of this recruitment relationship was consistent with Beverton-Holt type compensation, with no evidence of overcompensation (i.e., $\theta^{\text{sf}} \sim 1$; Fig. \ref{fig:pprecruitment}). There were substantial yearly deviations from the average recruitment relationship, with the thermal barrier timing and river discharge during the incubation period identified as key drivers. Estimated effect sizes of all assessed environmental drivers are summarized in Fig. \ref{fig:fryspawnfig}B.
+
+When the thermal barrier begins early (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, low) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`), fry production was estimated to change by approximately `r round(median(fry_percent_change$onset))`\% relative to a late onset (`r format(as.Date(as.Date(quantile(thermal_barrier$onset, high) - 1, origin = "2020-01-01"), origin = "1970-01-01"), "%B %d")`) (95\% CrI: `r round(quantile(fry_percent_change$onset, 0.025))`\% to `r round(quantile(fry_percent_change$onset, 0.975))`\%), with a `r round(mean(fry_percent_change$onset < 0) * 100)`\% probability of a negative effect (Fig. \ref{fig:fryspawnfig}C). Long versus short thermal barrier duration, independent of onset date, was estimated to change fry production by `r round(median(fry_percent_change$dur))`\% (95\% CrI: `r round(quantile(fry_percent_change$dur, 0.025))`\% to `r round(quantile(fry_percent_change$dur, 0.975))`\%), with a `r round(mean(fry_percent_change$dur < 0) * 100)`\% probability of a negative effect. 
 
 Fry production in years with low pre-spawn flushing was estimated to differ by `r round(median(fry_percent_change$freshet))`% relative to years with high flushing (95\% CrI: `r round(quantile(fry_percent_change$freshet,0.025))`\% to `r round(quantile(fry_percent_change$freshet, 0.975))`\%), with a `r round(mean(fry_percent_change$freshet<0) * 100)`% probability of a negative effect. Allowing flows during the incubation period to exceed the target range from the Fish/Water Management Tools $(5\text{–}28.5~\mathrm{m}^3/\mathrm{s})$ was estimated to change fry production by `r round(median(fry_percent_change$FWMT))`\% (95\% CrI: `r round(quantile(fry_percent_change$FWMT, 0.025))`\% to `r round(quantile(fry_percent_change$FWMT, 0.975))`\%), with a `r round(mean(fry_percent_change$FWMT < 0) * 100)`\% probability of a negative effect. 
 
@@ -1478,4 +1478,187 @@ spread_draws(fit, day_peak[year]) %>%
   scale_x_continuous(
     name = "ATUs during incubation period"
   )
+```
+
+```{r priorpost, include = FALSE, warning=FALSE}
+n_draws <- nrow(post)
+
+get_par <- function(name) post[[name]]
+
+param_priors <- list(
+  
+  # --- Recruitment ---
+  list("alpha[0]^sf", exp(post$alpha0),
+       exp(rnorm(n_draws, dat_list$alpha_sf_prior, dat_list$alpha_sf_sigma_prior)), TRUE),
+  
+  list("beta[0]^sf", exp(post$beta0),
+       exp(rnorm(n_draws, dat_list$beta_sf_prior, dat_list$beta_sf_sigma_prior)), TRUE),
+  
+  list("theta^sf", post$theta_sf,
+       rnorm(n_draws, 1, 0.1), FALSE),
+  
+  list("sigma[proc]^sf", post$sigma_sf,
+       rexp(n_draws, dat_list$sigma_sf_prior), TRUE),
+  
+  # --- Environmental ---
+  list("beta^FWMT", post$a_FWMT,
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  list("beta^ATU", post$sf_ATU,
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  list("beta^flush", post$b_freshet,
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  list("beta[peak]^ATU", post$b_ATU_peak,
+       rnorm(n_draws, -0.2, 0.5), FALSE),
+  
+  # --- Effective spawners ---
+  list("alpha[0]^eff", post$a_effective_spawners,
+       rnorm(n_draws, 0, 0.25), FALSE),
+  
+  list("w[eff]", post$thermal_barrier_transition_width_sd,
+       rlnorm(n_draws, log(2.5), 0.5), TRUE),
+  
+  list("beta^onset", post$b_therm_onset_raw,
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  list("beta^dur", post$b_therm_dur_raw,
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  # --- Volume ---
+  list("a[vol]", post$a_volume,
+       rnorm(n_draws, 0, 1), FALSE),
+  
+  list("beta[soak]", post$soak_b,
+       rnorm(n_draws, 1, 0.5), FALSE),
+  
+  list("beta[flow]", post$b_sample_flow,
+       rnorm(n_draws, 1, 0.5), FALSE),
+  
+  list("sigma[vol]", post$sigma_volume,
+       rlnorm(n_draws, log(0.3), 0.4), TRUE),
+  
+  list("beta^V", post$b_volume,
+       rnorm(n_draws, 1, 0.5), FALSE),
+  
+  # --- Diel ---
+  list("h^mu", post$hour_peak,
+       rnorm(n_draws, -0.5, 0.5), FALSE),
+  
+  list("h^sigma", post$hour_sd,
+       rlnorm(n_draws, log(1), 0.4), TRUE),
+  
+  # --- Emergence phenology ---
+  list("mu[d]^mu", get_par("emerge_phenology_mu[1]"),
+       rnorm(n_draws, 0, 0.5), FALSE),
+  
+  list("mu[d]^sigma", get_par("emerge_phenology_mu[2]"),
+       rnorm(n_draws, -0.5, 0.5), FALSE),
+  
+  list("mu[d]^skew", get_par("emerge_phenology_mu[3]"),
+       rnorm(n_draws, -2, 1), FALSE),
+  
+  list("sigma[d]^mu", get_par("emerge_phenology_sigma[1]"),
+       rlnorm(n_draws, log(0.3), 0.4), TRUE),
+  
+  list("sigma[d]^sigma", get_par("emerge_phenology_sigma[2]"),
+       rlnorm(n_draws, log(0.3), 0.4), TRUE),
+  
+  list("sigma[d]^skew", get_par("emerge_phenology_sigma[3]"),
+       rlnorm(n_draws, log(2), 0.4), TRUE),
+  
+  list("phi^fry", post$emerg_phi,
+       rlnorm(n_draws, log(5), 0.5), TRUE),
+  
+  # --- Onset ---
+  list("a[onset]", post$a_onset,
+       rnorm(n_draws, 0, 0.1), FALSE),
+  
+  list("beta[air]", post$b_air_onset,
+       rnorm(n_draws, -0.5, 0.5), FALSE),
+  
+  list("sigma[onset]", post$onset_sigma,
+       rexp(n_draws, 1), TRUE),
+  
+  # --- Duration ---
+  list("xi[dur]", post$xi_dur,
+       rnorm(n_draws, 0.5, 0.4), FALSE),
+  
+  list("omega[dur]", post$omega_dur,
+       rnorm(n_draws, 1.3, 0.2), FALSE),
+  
+  list("alpha[dur]", post$alpha_dur,
+       rnorm(n_draws, -2, 1), FALSE)
+)
+
+prior_post_df <- bind_rows(lapply(param_priors, function(p) {
+  
+  vals <- c(p[[2]], p[[3]])
+  
+  if (p[[4]]) {
+    value_plot <- ifelse(vals > 0, log10(vals), NA)
+  } else {
+    value_plot <- vals
+  }
+  
+  data.frame(
+    value = vals,
+    value_plot = value_plot,
+    type = rep(c("Posterior", "Prior"), each = n_draws),
+    parameter = p[[1]]
+  )
+}))
+
+prior_post_df <- prior_post_df %>%
+  mutate(group = case_when(
+    
+    parameter %in% c("alpha[0]^sf", "beta[0]^sf", "theta^sf", "sigma[proc]^sf") ~ "Recruitment",
+    
+    parameter %in% c("beta^FWMT", "beta^ATU", "beta^flush",
+                     "beta[peak]^ATU", "beta^onset", "beta^dur") ~ "Environment",
+    
+    parameter %in% c("alpha[0]^eff", "w[eff]") ~ "Effective spawners",
+    
+    parameter %in% c("a[vol]", "beta[soak]", "beta[flow]",
+                     "sigma[vol]", "beta^V", "h^mu", "h^sigma") ~ "Observation",
+    
+    parameter %in% c("mu[d]^mu", "mu[d]^sigma", "mu[d]^skew",
+                     "sigma[d]^mu", "sigma[d]^sigma", "sigma[d]^skew",
+                     "phi^fry") ~ "Phenology",
+    
+    parameter %in% c("a[onset]", "beta[air]", "sigma[onset]",
+                     "xi[dur]", "omega[dur]", "alpha[dur]") ~ "Onset & duration"
+    
+  ))
+
+plot_group <- function(df, grp_name) {
+  ggplot(df %>% filter(group == grp_name),
+         aes(x = value_plot, linetype = type)) +
+    geom_density(size = 0.7, na.rm = TRUE) +
+    facet_wrap(~ parameter, scales = "free", labeller = label_parsed) +
+    scale_linetype_manual(values = c(1, 2)) +
+    theme_bw() +
+    ggtitle(grp_name) +
+    labs(x = "Parameter value", y = "Density")
+}
+```
+
+```{r, pprecruitment,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=7, fig.height=6, fig.cap = "Comparison of prior and posterior for recruitment parameters."}
+plot_group(prior_post_df, "Recruitment")
+```
+```{r, ppenv,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=6, fig.cap = "Comparison of prior and posterior for environmental effect parameters."}
+plot_group(prior_post_df, "Environment")
+```
+```{r, ppspawners,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=7, fig.height=3, fig.cap = "Comparison of prior and posterior for effective spawner parameters."}
+plot_group(prior_post_df, "Effective spawners")
+```
+```{r, ppobs,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=9, fig.cap = "Comparison of prior and posterior for observation parameters."}
+plot_group(prior_post_df, "Observation")
+```
+```{r, ppphenology,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=9, fig.height=9, fig.cap = "Comparison of prior and posterior for fry emergence phenology parameters."}
+plot_group(prior_post_df, "Phenology")
+```
+```{r, ppthermal,  echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=7, fig.height=6, fig.cap = "Comparison of prior and posterior for air water relationship parameters."}
+plot_group(prior_post_df, "Onset & duration")
 ```
