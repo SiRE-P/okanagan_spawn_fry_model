@@ -1289,6 +1289,8 @@ fig_spawn_fry
 ```
 
 # Discussion
+Our analysis shows that spawner-to-fry production varies with the onset timing and duration of the thermal barrier and with whether flows during incubation remain within the FWMT target range. In contrast, neither pre-spawning flows nor incubation temperature meaningfully influence production, despite the strong influence of temperature on emergence timing. These results are consistent with thermal barrier dynamics influencing production through carry‑over effects on spawner condition, and with incubation flow conditions influencing egg and embryo survival through scouring and desiccation. These findings highlight the growing risk posed by warming during the upstream migration stage through its effects on thermal barrier dynamics. They also provide quantitative evidence that managing flows using the FWMT benefits fry production, suggesting that effective flow management may partially offset climate‑related impacts on freshwater production.
+
 
 # Acknowledgements
 
