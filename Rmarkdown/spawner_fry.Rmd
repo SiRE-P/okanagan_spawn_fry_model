@@ -912,6 +912,7 @@ p1 <- FWMT_BH_summary.df |>
 
 
 p3 <- fry_percent_change %>%
+  select(-FWMT_benefit) |> 
   rename("low incubation ATUs" = "ATU",
          "exceeded FWMT range" = "FWMT",
          "low pre-spawn flushing" = "freshet",
