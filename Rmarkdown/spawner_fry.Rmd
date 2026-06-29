@@ -1115,10 +1115,11 @@ arr/.style={-Stealth, thick}
 \node[proc] (dd)   at (3.3,-5)  {$\beta_y^{\mathrm{sf}}$\\Density dependence};
 \node[proc] (ftot) at (6.6,-7.5)  {$\hat{N}^{\mathrm{fry}}_y$\\Total emerging fry};
 \node[proc] (fday) at (6.6,-10) {$\hat{N}^{\mathrm{fry}}_{y,d}$\\Daily emergence};
-\node[proc] (dpk)  at (3.3,-8.35) {$d_y^{\mu}$\\Day of peak emergence};
-\node[proc] (sd)   at (3.3,-9.5) {$d_y^{\sigma}$\\Seasonal emergence spread};
-\node[proc] (hpk)  at (3.3,-11) {$h^{\mu}$\\Hour of peak emergence};
-\node[proc] (hsd)  at (3.3,-12.15) {$h^{\sigma}$\\Daily emergence spread};
+\node[proc] (dpk)  at (3.3,-8) {$d_y^{\mu}$\\Day of peak emergence};
+\node[proc] (sd)   at (3.3,-9.1) {$d_y^{\sigma}$\\Seasonal emergence spread};
+\node[proc] (skew) at (3.3,-10.15) {$\kappa_y$\\Seasonal emergence skew};
+\node[proc] (hpk)  at (3.3,-11.4) {$h^{\mu}$\\Peak emergence hour};
+\node[proc] (hsd)  at (3.3,-12.5) {$h^{\sigma}$\\Daily emergence spread};
 
 % ---- Sampling ----
 \node[samp] (flow) at (10,-9.15) {$\mathrm{flow}_i$\\River flow during sampling};
@@ -1150,6 +1151,7 @@ arr/.style={-Stealth, thick}
 \draw[arr] (ftot) -- (fday);
 \draw[arr] (dpk) -- (fday);
 \draw[arr] (sd) -- (fday);
+\draw[arr] (skew) -- (fday);
 
 \draw[arr] (fday) -- (y);
 \draw[arr] (hpk) -- (y);
@@ -1299,7 +1301,9 @@ In contrast, we find limited support for the hypotheses that pre-spawning flows 
 
 The structure of our model was guided by an explicit causal framework represented in our DAG (Fig. \ref{fig:DAG}), which makes transparent the assumed links between observed data and underlying processes and provides a structured basis for evaluating causal mechanisms [@pearl2016; @mcelreath2020]. Nevertheless, the validity of our inference depends on the accuracy of these assumed relationships, as well as on the simplifying assumptions required to make the model tractable. In particular, we assume that our index of relative fry abundance provides a reasonable proxy for absolute fry abundance. We also assume that fry emergence can be adequately described using a skew-normal distribution over the season and a log-normal distribution within each evening. More generally, all environmental covariates in the model are represented using indices that approximate underlying processes rather than directly measuring them. For example, thermal barrier dynamics are represented using a $22\,^\circ$C threshold over the period from June 25 to September 30, which may not fully capture the spatial and temporal variability in thermal exposure experienced by migrating fish. Finally, the relationships specified in the DAG are implemented using specific functional forms, including Shepherd recruitment, which may not fully capture the true underlying relationships. 
 
-- Okanagan synthesis
+These results provide important insight into the potential causes of the Okanagan sockeye salmon recovery by offering quantitative support for previously hypothesized links between environmental conditions, management actions, and spawner‑to‑fry production [@alexander2024]. In particular, our analysis supports the hypothesis that FWMT compliance has been an important contributor to the recovery. However, our results only demonstrate the benefits of the FWMT at a single life stage, and this analysis cannot estimate the degree to which these benefits persist through the sockeye life cycle to influence adult recruitment. Despite this, our results suggest that management measures such as FWMT may help offset some of the negative impacts of environmental conditions, such as the Okanagan River thermal barrier or marine heat waves, which are expected to become more common under climate change and may be more difficult to mitigate directly.
+
+
 
 - Extending to other systems and conclusion 
 
