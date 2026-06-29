@@ -563,9 +563,7 @@ dat_list <- list(Y = length(unique(env.df$year)),
                  hour = stand(log(emergence_select$time_set_numeric)),
                  #new_moon_date = stand(env.df$new_moon_yday),
                  
-                 dusk = stand(emergence_select$dusk), 
                  exceeded_FWMT = as.numeric(env.df$non_range_days>0),
-                 testalinden = ifelse(env.df$year == 2011, 1, 0),
                  day_std = (dayV - mean(emergence_select$yday))/sd(emergence_select$yday),
                  spawner_ln_est = env.df$spawners_ln_est,
                  spawner_ln_sd = env.df$spawner_ln_sd,
@@ -1178,7 +1176,7 @@ To specify the latent emergence process, we modelled fry emergence as a smooth, 
 $$\hat{N}_{y,d}^{\text{fry}} = \hat{N}_y^{\text{fry}}\frac{\exp(-\frac{1}{2}z_{y,d}^2)\Phi(\kappa_y z_{y,d})}{\sum_{d' \in \mathcal{D}}\exp(-\frac{1}{2}z_{y,d'}^2)\Phi(\kappa_y z_{y,d'})}, \hspace{1cm} z_{y,d} = \frac{d - d_y^\mu}{d_y^\sigma},$$
 
 
-where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$. The parameters $d_y^{\mu}$, $d_y^{\sigma}$, and $\kappa_y$ represent the peak timing, the spread of emergence across days, and the skew of the distribution in year $y$, modelled hierarchically across years (peak and skew on the linear scale; spread on the log scale). The function $\Phi(.)$ denotes the standard normal cumulative distribution function. We used standardized (mean = 0, sd = 1) day $d$ in the model. 
+where $\hat{N}_{y,d}^{\text{fry}}$ is the expected emergence intensity on day $d$ in year $y$. The parameters $d_y^{\mu}$, $d_y^{\sigma}$, and $\kappa_y$ represent the peak timing, the spread of emergence across days, and the skew of the distribution in year $y$, modelled hierarchically across years (peak and skew on the linear scale; spread on the log scale). We also allowed interannual variation in peak timing to depend on incubation temperature conditions by modelling $d_y^\mu$ as a linear function of accumulated thermal units (ATUs). The function $\Phi(.)$ denotes the standard normal cumulative distribution function. We used standardized (mean = 0, sd = 1) day $d$ in the model. 
 
 We evaluated alternative formulations of the seasonal emergence phenology, including (i) a model with time-invariant skew $\kappa$, and (ii) a symmetric Gaussian emergence function. The skew-normal model with interannual variation in skew presented above had substantially improved out of sample predictive performance, as quantified using leave-one-out cross validation ($\Delta$ELPD > 49). 
 
@@ -1323,6 +1321,7 @@ By providing a quantitative assessment of FWMT effectiveness, this approach also
 # Supplementary Materials
 ## Priors
 ```{r priorstable, echo=FALSE, message=FALSE, warning=FALSE}
+
 priors_tbl <- tibble::tribble(
   ~Parameter, ~Description, ~Prior, ~Scale,
 
@@ -1342,6 +1341,10 @@ priors_tbl <- tibble::tribble(
   sprintf("$\\mathrm{Exponential}(%s)$", dat_list$sigma_sf_prior),
   "log",
 
+  "$\\theta^{\\text{sf}}$",
+  "Shape parameter governing strength of density dependence (Shepherd function)",
+  "$\\mathrm{Normal}(1,\\, 0.1)$", "positive",
+
   "$N_y^{\\text{spawners}}$", "Latent spawner abundance (annual)",
   "$\\mathrm{LogNormal}(\\hat{\\mu}_y^{\\text{spawners}},\\, \\hat{\\sigma}_y^{\\text{spawners}})$",
   "natural",
@@ -1360,7 +1363,7 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(0,\\, 0.25)$", "logit",
 
   "$w_{\\text{eff}}$", "Transition width controlling how rapidly $p_y^{\\text{eff}}$ changes across years",
-  "$\\mathrm{LogNormal}(\\log(2.5),\\, 0.4)$", "positive",
+  "$\\mathrm{LogNormal}(\\log(2.5),\\, 0.5)$", "positive",
 
   "$\\beta^{\\text{onset}}$", "Effect of standardized barrier onset on $p_y^{\\text{eff}}$ (scaled by $w_{\\text{eff}}$ in the model)",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
@@ -1376,26 +1379,38 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized hour",
 
   "$h^{\\sigma}$", "Within-night spread (standardized hour scale)", 
-  "$\\mathrm{Exponential}(1)$", "positive",
+  "$\\mathrm{LogNormal}(\\log(1),\\, 0.4)$", "positive",
 
   "$\\mu_{d}^{\\mu}$", "Multiyear mean of peak emergence day",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized day",
 
   "$\\sigma_{d}^{\\mu}$", "Across-year SD of peak emergence day",
-  "$\\mathrm{Exponential}(1)$", "linear",
+  "$\\mathrm{LogNormal}(\\log(0.3),\\, 0.4)$", "positive",
 
   "$\\mu_{d}^{\\sigma}$", "Multiyear mean of log day spread",
   "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "log",
 
   "$\\sigma_{d}^{\\sigma}$", "Across-year SD of day spread",
-  "$\\mathrm{Exponential}(1)$", "positive",
+  "$\\mathrm{LogNormal}(\\log(0.3),\\, 0.4)$", "positive",
+
+  "$\\mu_{d}^{\\kappa}$", "Multiyear mean of emergence skew",
+  "$\\mathrm{Normal}(-2,\\, 1)$", "linear",
+
+  "$\\sigma_{d}^{\\kappa}$", "Across-year SD of emergence skew",
+  "$\\mathrm{LogNormal}(\\log(2),\\, 0.4)$", "positive",
+
+  "$\\rho_{d}$", "Correlation among emergence phenology parameters",
+  "$\\mathrm{LKJ}(2)$", "correlation",
+
+  "$\\beta^{\\text{ATU,peak}}$", "Effect of ATU on peak emergence timing",
+  "$\\mathrm{Normal}(-0.2,\\, 0.5)$", "standardized day",
 
   "$\\phi^{\\text{fry}}$", "Negative binomial overdispersion (NB2)",
-  "$\\mathrm{LogNormal}(\\log(20),\\, 0.5)$", "positive",
+  "$\\mathrm{LogNormal}(\\log(5),\\, 0.5)$", "positive",
 
   # --- Sample volume model (imputation) ---
   "$a_{\\text{vol}}$", "Intercept for log(sample volume) model",
-  "$\\mathrm{Normal}(0,\\, 2)$", "log",
+  "$\\mathrm{Normal}(0,\\, 1)$", "log",
 
   "$\\beta_{\\text{soak}}$", "Effect of log(soak time) on log(sample volume)",
   "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
@@ -1404,7 +1419,7 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
 
   "$\\sigma_{\\text{vol}}$", "Residual SD for log(sample volume) model",
-  "$\\mathrm{Exponential}(10)$", "log",
+  "$\\mathrm{LogNormal}(\\log(0.3),\\, 0.4)$", "log",
 
   # --- Thermal onset model (imputation / covariate model) ---
   "$a_{\\text{onset}}$", "Intercept for standardized onset model",
@@ -1418,14 +1433,15 @@ priors_tbl <- tibble::tribble(
 
   # --- Residual duration distribution (imputation / covariate model) ---
   "$\\xi_{\\text{dur}}$", "Skew-normal location for residual duration (scaled)",
-  "$\\mathrm{Normal}(0.45,\\, 0.2)$", "scaled",
+  "$\\mathrm{Normal}(0.5,\\, 0.4)$", "scaled",
 
   "$\\omega_{\\text{dur}}$", "Skew-normal scale for residual duration (scaled)",
   "$\\mathrm{Normal}(1.30,\\, 0.2)$", "positive",
 
   "$\\alpha_{\\text{dur}}$", "Skew-normal shape for residual duration (scaled)",
-  "$\\mathrm{Normal}(-2.4,\\, 1.0)$", "linear"
+  "$\\mathrm{Normal}(-2,\\, 1)$", "linear"
 )
+
 
 kable(priors_tbl, booktabs = TRUE, escape = FALSE,
       caption = "Prior distributions for all parameters in the joint Bayesian model.") %>%
