@@ -667,6 +667,11 @@ env_post <- left_join(env_post, spread_draws(fit, emerging_fry_ln[year, day]) %>
                         filter(emerge_fry_apex == max(emerge_fry_apex)) %>% select(-day)) |> 
   mutate(brood_year = year - 1)
 
+
+compact_theme <- theme(
+  plot.margin = margin(2, 5, 2, 5)
+)
+
 p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>% 
   mutate(brood_year = init_year + year - 1) %>% 
   mutate(date_stnd = day + min(emergence_select$yday) - 1) %>% 
@@ -674,20 +679,21 @@ p1 <- spread_draws(fit, emerging_fry_ln[year, day]) %>%
   summarise(fry = median(exp(emerging_fry_ln))) %>% 
   ggplot(aes(x = date_stnd, y = fry, group = brood_year, color = brood_year))+
   geom_line(size = 1)+
-  xlab("")+
+  xlab(NULL)+
   ylab("# of emerging fry (relative)")+
   scale_color_viridis_b(breaks = seq(2000, 2024, by = 4), option = "D", limits = c(2000, 2024), name = "Brood year")+
   scale_y_continuous(expand = c(0, 20))+
   theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))+
   scale_x_continuous(
-    name = "",
+    name = NULL,
     labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), expand = c(0, 0)
   )+ 
   theme(
   legend.spacing.y = unit(1.25, "mm"),
   legend.key.height = unit(6, "mm"),
   legend.margin = margin(0, 0, 0, 0)
-)
+)+
+  compact_theme
 
 
 day_peak_post <- spread_draws(fit, day_peak[year]) %>% 
@@ -704,7 +710,8 @@ p2 <-  day_peak_post |>
     breaks = seq(92, 126, length = 5)
   )+
   scale_x_continuous(breaks = year_breaks)+
-  xlab("Brood year")
+  xlab(NULL)+
+  compact_theme
 
 
 emergence_window <- spread_draws(fit, emerging_fry_ln[year, day]) %>% 
@@ -724,8 +731,9 @@ emergence_window_summary <- emergence_window |>
 p3 <- ggplot(emergence_window, aes(x = brood_year, y = days95))+
   stat_pointinterval()+
   stat_summary(fun = median, geom = "line")+
-  labs(y = "Emergence window (days)", x = "Brood year")+
-  scale_x_continuous(breaks = year_breaks)
+  labs(y = "Emergence window (days)", x = NULL)+
+  scale_x_continuous(breaks = year_breaks)+
+  compact_theme
 
 fry_abund_summary <-  spread_draws(fit, total_fry_ln[year]) |> 
   mutate(brood_year = year + init_year - 1) |> 
@@ -739,31 +747,15 @@ p4 <- spread_draws(fit, total_fry_ln[year]) |>
   stat_pointinterval()+
   scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "k"))+
   scale_x_continuous(breaks = year_breaks)+
-  labs(x = "Brood year", y = "Fry abundance (relative)")
-
-p5 <- spread_draws(fit, day_peak[year]) %>% 
-  mutate(year = init_year + year) %>%
-  mutate(day_peak = day_peak * sd(emergence_select$yday) + mean(emergence_select$yday)) %>% 
-  left_join(env_post |> select(-day_peak)) %>% 
-  ggplot(aes(x = new_moon_yday, y = day_peak))+
-  # stat_lineribbon(data = moon_emerge.df, aes(x = moon_day, y = day_peak, color = NULL, year = NULL), .width = c(CrIs))+
-  geom_abline(slope = 1, intercept = 0, lty = 2)+
-  stat_pointinterval(.width = CrIs, aes(color = ATU_yday, group = year))+
-  scale_fill_brewer(palette = "Greys", guide = "none")+
-  #geom_text_repel(data = env_post, aes(label = year, y = day_peak_median), color = "dodgerblue2")+
-  scale_color_viridis_c(option = "B", direction = -1, end = 0.9, 
-                        labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d"), "900 ATUs")+
-  scale_y_continuous(
-    name = "Estimated peak emergence date",
-    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-  ) +
-  scale_x_continuous(
-    name = "First new moon after 900 ATUs",
-    labels = function(y) format(as.Date(y, origin = "2020-01-01"), "%b %d")
-  )
+  labs(x = "Brood year", y = "Fry abundance (relative)")+
+  compact_theme
 
 fig_fry_emerge <- p1 / p2 / p3 / p4 +
-  plot_annotation(tag_levels = "A")
+  plot_annotation(tag_levels = "A") &
+  theme(
+    plot.margin = margin(2, 5, 2, 10),
+    plot.tag.position = c(-0.015, 1)
+  )
 
 fig_fry_emerge_cap <- paste0("Estimated fry emergence timing and relative abundance from the fry-emergence submodel. (A) The estimated relative abundance at emerging fry across dates where each line represents a single year. (B) Estimated peak fry-emergence day by year. (C) Estimated width of the emergence window in days by year. (D) Estimated relative fry abundance index by year. Points and error bars in panels B through D show the posterior medians with 66% and 95% credible intervals.")
 
@@ -1008,14 +1000,14 @@ Emerging fry are sampled at Vertical Drop Structure 13 (Fig. \ref{fig:map}) usin
 
 ## Environmental covariates
 ### Upstream migration thermal barrier
-Following @stiff2026, we define the thermal barrier period as the days between June 25 and September 30 when minimum daily water temperatures in the lower Okanagan River, measured in Malott Washington, exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Although river temperatures can exceed `r barrier_thresh` $^{\circ}$C before June 25th, we set this as the earliest barrier date because no more than 5% of the run has passed Wells dam (directly downstream) by that date in the past 25 years [@columbiariverdartcolumbiabasinresearchuniversityofwashington2025].
+Following @stiff2026, we define the thermal barrier period as the days between June 25 and September 30 when minimum daily water temperatures in the lower Okanagan River, measured in Malott Washington (USGS station 12447200), exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Daily mean water temperature records were obtained from the U.S. Geological Survey National Water Information System (NWIS) using the dataRetrieval R package [@decicco2025]. Gaps in the Malott temperature record were filled using a linear mixed-effects model relating daily minimum temperatures at Malott to concurrent temperatures at Oroville (USGS station 12439500) and the Similkameen River (USGS station 12442500), with year-specific random intercepts and slopes for both predictor stations.Although river temperatures can exceed `r barrier_thresh` $^{\circ}$C before June 25th, we set this as the earliest barrier date because no more than 5% of the run has passed Wells dam (directly downstream) by that date in the past 25 years [@columbiariverdartcolumbiabasinresearchuniversityofwashington2025]. 
 
 The onset date of the thermal barrier is the first day of this period and the duration is the number of days that the thermal barrier lasts. In years in which water temperatures never exceed `r barrier_thresh` $^{\circ}$C, we define the onset date as 10 days after the latest onset date observed in the dataset. This allowed us to have a continuous covariate for our models, rather than leaving onset date in these years as undefined. Duration is strongly negatively correlated with onset date (*r* = `r round(cor(thermal_barrier$onset, thermal_barrier$duration), 2)`), reflecting the fact that duration is likely to be longer when onset is early. To separate these effects, we used residual duration rather than observed duration, calculated from a linear model of duration as a function of onset date, indicating whether a barrier lasted longer or shorter than expected for its onset.
 
 Because water temperatures at Malott are not available prior to `r min(thermal_barrier$year)`, we treated thermal-barrier onset and residual duration as partially missing covariates and estimated them within the Bayesian spawner-to-fry recruitment model. For years with missing Malott temperature data, standardized onset date (mean = 0, SD = 1) was modelled as a linear function of mean June air temperature from the nearby NOAA station USW00094197. The regression coefficients and residual variance were estimated from years with observed onset, and onset dates in missing years were inferred under this fitted relationship and error distribution. Residual duration (scaled by its standard deviation) was also treated as partially missing and was estimated within the Bayesian model by assuming a skew‑normal distribution across years; missing values were inferred from this distribution.
 
 ### Incubation period flow and temperature
-We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on the date that spawners have typically arrived on the spawning grounds [@thompsoninreview] and just prior to when emerging fry have been most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver, which is monitored by the Water Survey of Canada (Station 08NM085). This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Fig. \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
+We define the incubation period as `r incubation_start` to `r incubation_end`. These dates are defined based on the date that spawners have typically arrived on the spawning grounds [@thompsoninreview] and just prior to when emerging fry have been most abundant in the emergence samples [@stockwell2020]. To estimate flow rates on the spawning grounds, we use daily flow rates in the Okanagan River near Oliver, which is monitored by the Water Survey of Canada (Station 08NM085) and data were extracted directly from the FWMT. This station is directly downstream of the spawning grounds where spawner enumeration and fry emergence sampling occurs (Fig. \ref{fig:map}). In each year, we calculate: 1) whether any incubation-day discharge fell outside the FWMT target range of $5\text{–}28.5~\mathrm{m}^3/\mathrm{s}$, and 2) the accumulated thermal units (ATUs) at the end of the incubation period (i.e., `r incubation_end`). ATUs were calculated as the cumulative sum of mean daily water temperatures over the incubation period for each brood year. 
 
 ### Pre-spawn flushing flows
 We characterized pre‑spawn flushing conditions using daily discharge from the Okanagan River near Oliver (Water Survey of Canada station 08NM085) during January through September preceding each spawning season (Fig. X). To summarize the extent to which flows were capable of mobilizing fine sediments within the spawning gravel, we constructed an annual flushing index:
@@ -1088,6 +1080,8 @@ ggplot(env.df, aes(x = onset, y = duration))+
 
 ## Directed acyclic graph and overall model structure
 The assumed causal pathways and observation structure are summarized in a directed acyclic graph (DAG\; Fig. \ref{fig:DAG}), which separates (1) annual spawner‑to‑fry production, (2) within‑year emergence phenology linking annual fry abundance to daily emergence intensity, and (3) the observation process linking daily emergence to set‑level catches via sampling effort and timing. The DAG guided the structure of our joint Bayesian model, which we describe in the subsequent sections. The model combines multiple submodels in a single joint likelihood implemented in Stan [@stan2024] and fit in R version `r getRversion()` [@rcoreteam2024] using cmdstanr [@gabry2024].
+
+We used Microsoft 365 Copilot (GPT-5) as a tool to support Stan model development, including discussion of alternative model structures, generation of example code, and identification of potential causes of convergence issues. All AI-generated suggestions and code were reviewed, tested, and verified by the authors for logic and accuracy before incorporation into the analysis.
 
 ```{=latex}
 \begin{figure}
@@ -1293,7 +1287,7 @@ Fry production in years with low pre-spawn flushing was estimated to differ by `
 
 In years with low incubation accumulated thermal units, fry production was estimated to differ by `r round(median(fry_percent_change$ATU))`\% relative to years with high incubation accumulated thermal units (95\% CrI: `r round(quantile(fry_percent_change$ATU, 0.025))`\% to `r round(quantile(fry_percent_change$ATU, 0.975))`\%), with a `r round(mean(fry_percent_change$ATU < 0) * 100)`\% probability of a negative effect.
 
-```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.1, fig.height=8.4*1.1,  fig.align = "center", fig.cap= fig_fry_emerge_cap}
+```{r fryemergefig, echo=FALSE, message=FALSE, warning=FALSE, results='asis', fig.width=6*1.1, fig.height=8,  fig.align = "center", fig.cap= fig_fry_emerge_cap}
 fig_fry_emerge
 ```
 
@@ -1318,6 +1312,25 @@ Although this analysis is grounded in the Okanagan system and the specific conte
 
 
 # Acknowledgements
+We thank the Okanagan Nation Alliance and Fisheries and Oceans Canada field crews for their dedication in collecting the spawner and fry data that made this study possible. We are also grateful to Elizabeth Ng for cleaning and standardizing the field data used in our analyses.
+
+We used Microsoft Copilot (GPT‑5) to suggest editorial revisions to portions of the manuscript. Suggestions were limited to copyediting, grammar, and clarity. All AI-generated suggestions were reviewed by the authors and incorporated only after verification that they did not introduce new scientific content. The authors take full responsibility for the analyses, interpretations, and conclusions presented in the manuscript.
+
+## Author contributions  
+Patrick L. Thompson: Conceptualization, Methodology, Formal Analysis, Software, Validation, Visualization, Writing – Original Draft, Review & Editing, Project Administration.  
+Karilyn Alex: Conceptualization, Investigation,  Data curation, Funding acquisition, Writing - Review & Editing;
+Howard Stiff: Conceptualization, Data curation, Writing - Review & Editing;
+Athena Ogden: Conceptualization, Data curation, Writing - Review & Editing; 
+
+## Competing Interests
+
+The authors declare no competing interests.
+
+## Data Availability
+
+The data used in this study are the property of the Okanagan Nation Alliance and are subject to a data sharing agreement. Please contact them directly concerning availability and acknowledgements: [Sylix.org](sylix.org).
+
+All scripts and stan model code are available for public access on GitHub (https://github.com/SiRE-P/okanagan_spawn_fry_model) and Zenodo (TO ADD).
 
 
 \FloatBarrier
