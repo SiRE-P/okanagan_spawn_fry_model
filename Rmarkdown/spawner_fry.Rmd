@@ -1315,6 +1315,8 @@ Although this analysis is grounded in the Okanagan system and the specific conte
 
 
 # Acknowledgements
+This work stands on the shoulders of Okanagan Nation elders, leaders, knowledge keepers, youth, and others who have desired for over 100 years to re-establish a balanced ecosystem approach to water management for salmon. To the present-day, Syilx Okanagan community members have prioritized being on the land and water to measure and observe the results of FWMT. This story is just the beginning to better understand our relationship to place and value in community, culture, history, and the larger vision of the Okanagan Nation Elders to heal the river by “bringing it back” kt cp’əlk’ stim’.
+
 We thank the Okanagan Nation Alliance and Fisheries and Oceans Canada field crews for their dedication in collecting the spawner and fry data that made this study possible. We are also grateful to the late Kim Hyatt who was instrumental in establishing the field surveys and developing the Fish/Water Management Tool.
 
 We used Microsoft Copilot (GPT‑5) to suggest editorial revisions to portions of the manuscript. Suggestions were limited to copyediting, grammar, and clarity. All AI-generated suggestions were reviewed by the authors and incorporated only after verification that they did not introduce new scientific content. The authors take full responsibility for the analyses, interpretations, and conclusions presented in the manuscript.
