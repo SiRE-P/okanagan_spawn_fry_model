@@ -1492,6 +1492,7 @@ spread_draws(fit, volume_merge[set]) |>
   mutate(fry = dat_list$fry_obs, year = dat_list$year, day = dat_list$day, hour = dat_list$hour) |> 
   mutate(yday = day + min(emergence_select$yday) - 1) |> 
   mutate(brood_year = year + init_year - 1) |> 
+  mutate(sample_year = brood_year + 1) |> 
   mutate(hour = hour * sd(emergence_select$time_set_numeric) + mean(emergence_select$time_set_numeric)) |> 
   ggplot(aes(x = yday, y = fry/volume, color = hour))+
   geom_point()+
@@ -1513,11 +1514,12 @@ spread_draws(fit, volume_merge[set]) |>
   mutate(fry = dat_list$fry_obs, year = dat_list$year, day = dat_list$day, hour = dat_list$hour) |> 
   mutate(yday = day + min(emergence_select$yday) - 1) |> 
   mutate(brood_year = year + init_year - 1) |> 
+  mutat(sample_year = brood_year + 1) |> 
   mutate(hour = hour * sd(emergence_select$time_set_numeric) + mean(emergence_select$time_set_numeric)) |> 
   filter(yday>96, yday<120) |> 
 ggplot(aes(x = hour, y = fry/volume, color = yday))+
   geom_point()+
-  facet_wrap(~brood_year)+
+  facet_wrap(~sample_year)+
   scale_y_log10()+
   scale_color_viridis_c("day-of-year")+
     ylab("Fry per volume (m3)")+
