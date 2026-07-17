@@ -1374,10 +1374,6 @@ priors_tbl <- tibble::tribble(
   "Shape parameter governing strength of density dependence (Shepherd function)",
   "$\\mathrm{Normal}(1,\\, 0.1)$", "positive",
 
-  "$N_y^{\\text{spawners}}$", "Latent spawner abundance (annual)",
-  "$\\mathrm{LogNormal}(\\hat{\\mu}_y^{\\text{spawners}},\\, \\hat{\\sigma}_y^{\\text{spawners}})$",
-  "natural",
-
   "$\\beta^{\\text{FWMT}}$", "Effect of FWMT exceedance on $\\log\\alpha_y^{\\text{sf}}$",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
 
@@ -1391,13 +1387,10 @@ priors_tbl <- tibble::tribble(
   "$\\alpha_0^{\\text{eff}}$", "Baseline per-capita spawner effectiveness (logit scale)",
   "$\\mathrm{Normal}(0,\\, 0.25)$", "logit",
 
-  "$w_{\\text{eff}}$", "Transition width controlling how rapidly $p_y^{\\text{eff}}$ changes across years",
-  "$\\mathrm{LogNormal}(\\log(2.5),\\, 0.5)$", "positive",
-
-  "$\\beta^{\\text{onset}}$", "Effect of standardized barrier onset on $p_y^{\\text{eff}}$ (scaled by $w_{\\text{eff}}$ in the model)",
+  "$\\beta^{\\text{onset}}$", "Effect of standardized barrier onset on $p_y^{\\text{eff}}$",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
 
-  "$\\beta^{\\text{dur}}$", "Effect of residual barrier duration on $p_y^{\\text{eff}}$ (scaled by $w_{\\text{eff}}$ in the model)",
+  "$\\beta^{\\text{dur}}$", "Effect of residual barrier duration on $p_y^{\\text{eff}}$",
   "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
 
   # --- Emergence observation model ---
@@ -1405,9 +1398,9 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(1,\\, 0.5)$", "log",
 
   "$h^{\\mu}$", "Within-night peak hour",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "standardized hour",
+  "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "standardized hour",
 
-  "$h^{\\sigma}$", "Within-night spread (standardized hour scale)", 
+  "$h^{\\sigma}$", "Within-night spread", 
   "$\\mathrm{LogNormal}(\\log(1),\\, 0.4)$", "positive",
 
   "$\\mu_{d}^{\\mu}$", "Multiyear mean of peak emergence day",
@@ -1451,13 +1444,13 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{LogNormal}(\\log(0.3),\\, 0.4)$", "log",
 
   # --- Thermal onset model (imputation / covariate model) ---
-  "$a_{\\text{onset}}$", "Intercept for standardized onset model",
+  "$a_{\\text{onset}}$", "Intercept for standardized thermal onset model",
   "$\\mathrm{Normal}(0,\\, 0.1)$", "standardized",
 
-  "$\\beta_{\\text{air}}$", "Effect of June air temperature on standardized onset",
+  "$\\beta_{\\text{air}}$", "Effect of June air temperature on standardized thermal onset",
   "$\\mathrm{Normal}(-0.5,\\, 0.5)$", "standardized",
 
-  "$\\sigma_{\\text{onset}}$", "Residual SD for standardized onset model",
+  "$\\sigma_{\\text{onset}}$", "Residual SD for standardized thermal onset model",
   "$\\mathrm{Exponential}(1)$", "positive",
 
   # --- Residual duration distribution (imputation / covariate model) ---
