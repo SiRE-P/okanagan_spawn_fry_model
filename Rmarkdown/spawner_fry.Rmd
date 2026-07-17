@@ -15,6 +15,8 @@ output:
       latex_engine: xelatex
 csl: ../../../citation_resources/canadian-journal-of-fisheries-and-aquatic-sciences.csl
 bibliography: ../../../citation_resources/plt_library_new.bib
+nocite: |
+  @lehner2013, @massicotte2026
 always_allow_html: true
 link-citations: yes
 
@@ -1482,10 +1484,9 @@ kable(priors_tbl, booktabs = TRUE, escape = FALSE,
 ## Supplementary Figures
 \FloatBarrier
 <!-- switch to map that includes vertical drop structures -->
-```{r map, echo = FALSE, message = FALSE, fig.cap="Map of the Columbia and Okanagan/Okanogan River basins. Panel A shows the broader Columbia River basin downstream of the Okanagan with the main stem and Okanogan Rivers in black and all tributaries of stream order five or lower in grey. Panel B shows a portion of the Okanagan basin that covers the main (Index) spawning grounds for Osoyoos sockeye in the Okanagan River. The mainstem Okanagan river is in black and other rivers and tributaries of order 5 or 6 are shown in grey. Station 08NM085 is an Environment and Climate Change Canada water monitoring station.", out.width="100%"}
+```{r map, echo = FALSE, message = FALSE, fig.cap="Map of the Columbia and Okanagan/Okanogan River basins. Panel A shows the broader Columbia River Basin downstream of the Okanagan with the mainstem and Okanogan Rivers in black and all tributaries of stream order five or lower in grey. Panel B shows a portion of the Okanagan Basin that covers the index (main) spawning grounds for Osoyoos sockeye in the Okanagan River. The mainstem Okanagan River is in black and other rivers and tributaries of order five and size are shown in grey. Station 08NM085 is the Environment and Climate Change Canada water monitoring station. Spatial data are from GeoBC (Province of BC), HydroRIVERS (Lehner and Grill 2013), and the rNaturalEarth package (Massicotte and South 2026). Map projection: NAD83 / BC Albers (EPSG:3005).", out.width="100%"}
 knitr::include_graphics("../figures/manuscript_map.pdf")
 ```
-
 
 ```{r frysets, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=6, fig.cap = "Observed fry per volume in sets over days in each year (i.e., brood year + 1). Colours show the hour that each set was taken."}
 spread_draws(fit, volume_merge[set]) |> 
