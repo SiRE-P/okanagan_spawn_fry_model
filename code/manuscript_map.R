@@ -2,6 +2,7 @@ library(sf)
 library(tidyverse)
 library(ggspatial)
 library(patchwork)
+library(rnaturalearth)
 
 first_bbox <- st_bbox(
   c(xmin = -126, xmax = -110,
@@ -24,8 +25,7 @@ columbia_all <- rivers |> filter(MAIN_RIV == 70386275) |>
   st_transform(st_crs(osoyoos_lake))
 
 Okanagan_dam <- st_sf(name = "Okanagan Dam",   geometry = st_sfc(st_point(c(-119.5891, 49.5286)),crs = 4326)) |> 
-  st_transform(st_crs(VDS13))
-
+  st_transform(st_crs(streams))
 
 i <- st_nearest_feature(Okanagan_dam, columbia_all)
 
@@ -116,10 +116,10 @@ study_area <- ggplot() +
   geom_sf(data = osoyoos_lake, fill = "grey85", linewidth = 0.3) +
   geom_sf(data = border, color = "grey50", linewidth = 0.3)+
   geom_text(data = lake_labels, aes(x, y, label = label), fontface = "italic", size = 3)+
-  geom_sf(data = VDS13, pch = 19, size = 2)+
-  geom_sf(data = ECCC_station, pch = 19, size = 2)+
-  geom_sf(data = towns_sf, pch = 19, size = 2)+
-  geom_sf_text(data = towns_sf, aes(label = name, hjust = hjust), size = 2.2, nudge_x = towns_sf$nudge_x, nudge_y = towns_sf$nudge_y) +
+  geom_sf(data = VDS13, pch = 19, size = 1.5)+
+  geom_sf(data = ECCC_station, pch = 19, size = 1.5)+
+  geom_sf(data = towns_sf, pch = 19, size = 1.5)+
+  geom_sf_text(data = towns_sf, aes(label = name, hjust = hjust), size = 2.5, nudge_x = towns_sf$nudge_x, nudge_y = towns_sf$nudge_y) +
   annotate("segment", x = 1469500,  xend = 1480000, y = y_top,  yend = y_top, linetype = 2,   linewidth = 0.3) +
   annotate("segment", x = 1469500,  xend = 1480000, y = y_bottom, yend = y_bottom, linetype = 2, linewidth = 0.3)+
   annotate("text", x = 1476000, y = 489000, label = "Index\nspawning\nsection",size = 3)+
