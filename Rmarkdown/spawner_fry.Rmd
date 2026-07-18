@@ -1375,23 +1375,23 @@ priors_tbl <- tibble::tribble(
   "$\\mathrm{Normal}(1,\\, 0.1)$", "positive",
 
   "$\\beta^{\\text{FWMT}}$", "Effect of FWMT exceedance on $\\log\\alpha_y^{\\text{sf}}$",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+  "$\\mathrm{Normal}(0,\\, 1)$", "log",
 
   "$\\beta^{\\text{ATU}}$", "Effect of incubation ATU on $\\log\\alpha_y^{\\text{sf}}$",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+  "$\\mathrm{Normal}(0,\\, 1)$", "log",
 
   "$\\beta^{\\text{flush}}$", "Effect of pre-spawn flushing on $\\log\\beta_y^{\\text{sf}}$",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "log",
+  "$\\mathrm{Normal}(0,\\, 1)$", "log",
 
   # --- Thermal barrier effects on effective spawners ---
   "$\\alpha_0^{\\text{eff}}$", "Baseline per-capita spawner effectiveness (logit scale)",
   "$\\mathrm{Normal}(0,\\, 0.25)$", "logit",
 
   "$\\beta^{\\text{onset}}$", "Effect of standardized barrier onset on $p_y^{\\text{eff}}$",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
+  "$\\mathrm{Normal}(0,\\, 1)$", "logit (scaled)",
 
   "$\\beta^{\\text{dur}}$", "Effect of residual barrier duration on $p_y^{\\text{eff}}$",
-  "$\\mathrm{Normal}(0,\\, 0.5)$", "logit (scaled)",
+  "$\\mathrm{Normal}(0,\\, 1)$", "logit (scaled)",
 
   # --- Emergence observation model ---
   "$\\beta^{V}$", "Effect of sampled volume on log expected catch",
@@ -1562,29 +1562,27 @@ param_priors <- list(
   
   # --- Environmental ---
   list("beta^FWMT", post$a_FWMT,
-       rnorm(n_draws, 0, 0.5), FALSE),
+       rnorm(n_draws, 0, 1), FALSE),
   
   list("beta^ATU", post$sf_ATU,
-       rnorm(n_draws, 0, 0.5), FALSE),
+       rnorm(n_draws, 0, 1), FALSE),
   
   list("beta^flush", post$b_freshet,
-       rnorm(n_draws, 0, 0.5), FALSE),
+       rnorm(n_draws, 0, 1), FALSE),
   
   list("beta[peak]^ATU", post$b_ATU_peak,
-       rnorm(n_draws, -0.2, 0.5), FALSE),
+       rnorm(n_draws, -0.2, 1), FALSE),
   
   # --- Effective spawners ---
   list("alpha[0]^eff", post$a_effective_spawners,
        rnorm(n_draws, 0, 0.25), FALSE),
   
-  list("w[eff]", post$thermal_barrier_transition_width_sd,
-       rlnorm(n_draws, log(2.5), 0.5), TRUE),
+  list("beta^onset", post$b_therm_onset,
+       rnorm(n_draws, 0, 1), FALSE),
   
-  list("beta^onset", post$b_therm_onset_raw,
-       rnorm(n_draws, 0, 0.5), FALSE),
+  list("beta^dur", post$b_therm_dur,
+       rnorm(n_draws, 0, 1), FALSE),
   
-  list("beta^dur", post$b_therm_dur_raw,
-       rnorm(n_draws, 0, 0.5), FALSE),
   
   # --- Volume ---
   list("a[vol]", post$a_volume,
@@ -1673,12 +1671,10 @@ prior_post_df <- bind_rows(lapply(param_priors, function(p) {
 prior_post_df <- prior_post_df %>%
   mutate(group = case_when(
     
-    parameter %in% c("alpha[0]^sf", "beta[0]^sf", "theta^sf", "sigma[proc]^sf") ~ "Recruitment",
+    parameter %in% c("alpha[0]^sf", "beta[0]^sf", "theta^sf", "sigma[proc]^sf", "alpha[0]^eff") ~ "Recruitment",
     
     parameter %in% c("beta^FWMT", "beta^ATU", "beta^flush",
                      "beta[peak]^ATU", "beta^onset", "beta^dur") ~ "Environment",
-    
-    parameter %in% c("alpha[0]^eff", "w[eff]") ~ "Effective spawners",
     
     parameter %in% c("a[vol]", "beta[soak]", "beta[flow]",
                      "sigma[vol]", "beta^V", "h^mu", "h^sigma") ~ "Observation",
@@ -1704,17 +1700,14 @@ plot_group <- function(df, grp_name) {
 }
 ```
 
-```{r pprecruitment,  echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=6, fig.cap = "Comparison of prior and posterior for recruitment parameters."}
+```{r pprecruitment,  echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=6, fig.cap = "Comparison of prior and posterior for recruitment parameters."}
 plot_group(prior_post_df, "Recruitment")
 ```
 
-```{r ppenv, echo=FALSE, fig.cap="Comparison of prior and posterior for environmental effect parameters."}
+```{r ppenv, echo=FALSE, fig.width=9, fig.height=6, fig.cap="Comparison of prior and posterior for environmental effect parameters."}
 print(plot_group(prior_post_df, "Environment"))
 ```
 
-```{r ppspawners, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=3, fig.cap = "Comparison of prior and posterior for effective spawner parameters."}
-plot_group(prior_post_df, "Effective spawners")
-```
 
 ```{r ppobs, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=9, fig.cap = "Comparison of prior and posterior for observation parameters."}
 plot_group(prior_post_df, "Observation")

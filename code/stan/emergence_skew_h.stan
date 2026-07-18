@@ -73,10 +73,9 @@ parameters {
   real sf_ATU;
   
   real a_effective_spawners;
-  real b_therm_onset_raw;
-  real b_therm_dur_raw;
-  real<lower=0> thermal_barrier_transition_width_sd; 
-  
+  real b_therm_onset;
+  real b_therm_dur;
+
   real a_onset;
   real b_air_onset;
   real<lower=0> onset_sigma;
@@ -157,11 +156,6 @@ transformed parameters{
   vector[Y] eff_spawner_prop;
   
   
-  //effective spawner paramaters scaled to SD units of onset date
-  real slope_scale = 5.9 / thermal_barrier_transition_width_sd; //5.9 is the logit scale distance between 5% and 95%
-  real b_therm_onset = slope_scale * b_therm_onset_raw;
-  real b_therm_dur   = slope_scale * b_therm_dur_raw;
-  
   //year specific alphas
   vector[Y] alpha_sf;
   vector[Y] beta_sf;
@@ -211,14 +205,13 @@ model {
   beta0 ~ normal(beta_sf_prior, beta_sf_sigma_prior);
   theta_sf ~ normal(1, 0.1);
   
-  a_FWMT ~ normal(0, 0.5);
-  sf_ATU ~ normal(0, 0.5);
+  a_FWMT ~ normal(0, 1);
+  sf_ATU ~ normal(0, 1);
   
   a_effective_spawners ~ normal(0, 0.25); 
-  thermal_barrier_transition_width_sd ~ lognormal(log(2.5), 0.5);
-  b_therm_dur_raw ~ normal(0, 0.5);
-  b_therm_onset_raw ~ normal(0, 0.5);
-  b_freshet ~ normal(0, 0.5);
+  b_therm_dur ~ normal(0, 1);
+  b_therm_onset ~ normal(0, 1);
+  b_freshet ~ normal(0, 1);
   
   spawners ~ lognormal(spawner_ln_est, spawner_ln_sd);
   
