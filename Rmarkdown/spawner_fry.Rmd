@@ -1000,6 +1000,8 @@ The ONA has conducted fry emergence surveys in the Okanagan River each spring (M
 
 Emerging fry are sampled at Vertical Drop Structure 13, which is located on the downstream end of the main sockeye spawning grounds (Index section) for the Osoyoos population (Fig. \ref{fig:map}B). Emerging fry are sampled using a fyke net (1 $\times$ 2 ft opening; 5 mm stretch mesh) with typically four sets per night, each with a target soak time of 15 minutes. For each set, total fry catch, soak time, and set start time are recorded. Since 2008, a flow meter has been used to estimate the sampled water volume for each set. To reduce heterogeneity in sampling conditions (particularly in early years), our analysis only includes sets conducted between 21:00 and 01:00 with soak times between 5 and 20 minutes, and with sampled volume of at least 10 m$^3$.  
 
+These surveys were conducted within Syilx title and rights relating to Okanogan sockeye. No field permit was obtained. Animal ethics approval was not obtained for this study. Fish were surveyed using methods intended to minimize stress and mortality, including a blunt cod-end to retain fry alive and shortened soak durations when abundances or flows were high. Fish generally remain alive and in good condition and are released back into the river.
+
 ## Environmental covariates
 ### Upstream migration thermal barrier
 Following @stiff2026, we define the thermal barrier period as the days between June 25 and September 30 when minimum daily water temperatures in the Okanogan River, measured in Malott Washington (USGS station 12447200), exceed `r barrier_thresh` $^{\circ}$C without a break of at least five days. Daily mean water temperature records were obtained from the U.S. Geological Survey National Water Information System (NWIS) using the dataRetrieval R package [@decicco2025]. Gaps in the Malott temperature record were filled using a linear mixed-effects model relating daily minimum temperatures at Malott to concurrent temperatures at Oroville (USGS station 12439500) and the Similkameen River (USGS station 12442500), with year-specific random intercepts and slopes for both predictor stations. Although river temperatures can exceed `r barrier_thresh` $^{\circ}$C before June 25th, we set this as the earliest barrier date because no more than 5% of the run has passed Wells dam (directly downstream) by that date in any of the past 25 years [@columbiariverdartcolumbiabasinresearchuniversityofwashington2025]. 
@@ -1329,7 +1331,7 @@ Athena Ogden: Conceptualization, Data curation, Writing - Review & Editing;
 
 ## Competing Interests
 
-The authors declare no competing interests.
+This research was funded through grants from Douglas County Public Utility District which have covered the ongoing deployment of the FWMT as well as monitoring and data synthesis regarding its impacts on fish in the Okanagan basin.
 
 ## Data Availability
 
