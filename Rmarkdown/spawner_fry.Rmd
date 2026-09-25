@@ -1,6 +1,6 @@
 ---
 title: "Temperature and flow impacts on spawner-to-fry production in Okanagan sockeye salmon"
-author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca],  Karilyn Alex$^2$, Howard Stiff$^3$, Athena Ogden$^3$\n|\n|
+author: "| Patrick L. Thompson$^{1}$^[Corresponding author: patrick.thompson@dfo-mpo.gc.ca],  Karilyn Alex$^2$, Howard W. Stiff$^3$, Athena D. Ogden$^3$\n|\n|
   $^1$Pacific Science Enterprise Centre, Fisheries and Oceans Canada, West Vancouver, B.C., Canada\n|
   $^2$Okanagan Nation Alliance, Westbank, B.C., Canada\n|
   $^3$Pacific Biological Station, Fisheries and Oceans Canada, Nanaimo, B.C., Canada\n"
@@ -1319,7 +1319,7 @@ Although this analysis is grounded in the Okanagan system and the specific conte
 # Acknowledgements
 This work stands on the shoulders of Okanagan Nation elders, leaders, knowledge keepers, youth, and others who have desired for over 100 years to re-establish a balanced ecosystem approach to water management for salmon. To the present-day, Syilx Okanagan community members have prioritized being on the land and water to measure and observe the results of FWMT. This story is part of an endeavour to better understand our relationship to place and value in community, culture, history, and the larger vision of the Okanagan Nation Elders to heal the river by *kt cp’əlk’ stim’* (“bringing it back”).
 
-We thank the Okanagan Nation Alliance and Fisheries and Oceans Canada field crews for their dedication in collecting the spawner and fry data that made this study possible. We are also grateful to the late Kim Hyatt who was instrumental in establishing the field surveys and in developing the Fish/Water Management Tool.
+We thank the ONA field crews for their dedication in collecting the spawner and fry data that made this study possible. We also thank the Canadian Okanagan Basin Technical Working Group (COBTWG) which includes participants from the ONA, DFO, and the Province of British Columbia Ministry of Water, Land, and Resource Stewardship. We are also grateful to the late Kim Hyatt who was instrumental in establishing the field surveys and in developing the Fish/Water Management Tool.
 
 We used Microsoft Copilot (GPT‑5, 2026) to proofread portions of the manuscript (e.g., mathematical notation and description of the model), focusing on grammar, clarity, and accuracy. All AI-generated suggestions were assessed by the authors and verified for accuracy before being incorporated. The authors take full responsibility for the analyses, interpretations, and conclusions presented in the manuscript.
 
@@ -1329,9 +1329,11 @@ Karilyn Alex: Conceptualization, Investigation,  Data curation, Funding acquisit
 Howard Stiff: Conceptualization, Data curation, Writing - Review & Editing;
 Athena Ogden: Conceptualization, Data curation, Writing - Review & Editing; 
 
-## Competing Interests
+## Funding
+The research was supported by a collaborative agreement between Fisheries and Oceans Canada (DFO) and the Okanagan Nation Alliance (ONA) to assess the cumulative impacts of water management, habitat disturbances, and climate change on production variation of Osoyoos Lake Sockeye salmon. The ONA receives funding from the Douglas County Public Utility District.
 
-This research was funded through grants from Douglas County Public Utility District which have covered the ongoing deployment of the FWMT as well as monitoring and data synthesis regarding its impacts on fish in the Okanagan basin.
+## Competing Interests
+Douglas County Public Utility District provides funding to the ONA for the ongoing deployment of the Fish Water Management Tool as well as monitoring and data synthesis regarding its impacts on fish in the Okanagan basin. The Fish Water Management Tool is among the factors examined in this study. The funder had no role in the analysis, interpretation of results, preparation of the manuscript, or decision to publish.
 
 ## Data Availability
 
