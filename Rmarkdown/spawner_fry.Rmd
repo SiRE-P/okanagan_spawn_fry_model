@@ -1339,7 +1339,7 @@ Douglas County Public Utility District provides funding to the ONA for the ongoi
 
 The data used in this study are the property of the Okanagan Nation Alliance and are subject to a data sharing agreement. Please contact them directly concerning availability and acknowledgements: [Sylix.org](sylix.org).
 
-All scripts and stan model code are available for public access on GitHub (https://github.com/SiRE-P/okanagan_spawn_fry_model) and Zenodo (TO ADD).
+All scripts and stan model code are available for public access on GitHub (https://github.com/SiRE-P/okanagan_spawn_fry_model) and Zenodo (10.5281/zenodo.22968425).
 
 
 \FloatBarrier
